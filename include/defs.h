@@ -11,17 +11,6 @@
 #include <driver/config.h>
 
 
-/**
- * custom max WDT timer ticks when handling resource list [default 512]
- *  - __RESOURCE_MANAGEMENT_ENABLE__ must be defined to take effect
- */
-//#define __RESOURCE_LIST_CRITICAL_SECTION_WDT_MAX_TICKS__    512
-
-/**
- * select custom WDT source when handling resource list [default SMCLK]
- *  - __RESOURCE_MANAGEMENT_ENABLE__ must be defined to take effect
- */
-//#define __RESOURCE_LIST_CRITICAL_SECTION_WDT_SSEL__         SMCLK
 
 // -------------------------------------------------------------------------------------
 

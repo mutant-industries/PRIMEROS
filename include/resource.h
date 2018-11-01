@@ -36,7 +36,7 @@ struct Disposable {
 
 // -------------------------------------------------------------------------------------
 
-#define __register_dispose_hook(resource, dispose_hook) \
+#define __dispose_hook_register(resource, dispose_hook) \
     resource_mark(running_process, (Disposable_t *)(resource), (dispose_function_t) (dispose_hook));
 
 /**
