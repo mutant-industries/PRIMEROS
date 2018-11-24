@@ -13,26 +13,30 @@
 
 // -------------------------------------------------------------------------------------
 
+/**
+ * Disposed resource public api possible replacement
+ */
+extern int16_t unsupported_after_disposed(void);
+
+// -------------------------------------------------------------------------------------
+
 #ifdef __RESOURCE_MANAGEMENT_ENABLE__
 
 /**
  * Resource owned by process to be cleaned up on process exit
  */
 struct Disposable {
-    // cleanup hook of references between resource and PCB
+    // cleanup hook of references between resource and process
     Dispose_hook_t _resource_dispose_hook;
     // owner process control block
     Process_control_block_t *_owner;
     // parent hook responsible of freeing up the resource
     dispose_function_t _dispose_hook;
-    // enable resource chaining
+    // enable resource bi-directional chaining
     struct Disposable *_next;
+    struct Disposable *_prev;
 
 };
-
-// -------------------------------------------------------------------------------------
-
-#include <process.h>    // For extern Process_control_block_t *running_process;
 
 // -------------------------------------------------------------------------------------
 

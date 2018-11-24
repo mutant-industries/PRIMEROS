@@ -2,7 +2,13 @@
 // Copyright (c) 2018-2019 Mutant Industries ltd.
 #include <stddef.h>
 #include <resource.h>
-#include <driver/critical.h>
+#include <process.h>
+#include <driver/interrupt.h>
+
+
+int16_t unsupported_after_disposed() {
+    return KERNEL_DISPOSED_RESOURCE_ACCESS;
+}
 
 /**
  * Only compiles if Disposable_t and Process_control_block_t contain required mapping structures
@@ -15,62 +21,70 @@
  * This point reached on dispose() if process_mark_resource was called before
  */
 static dispose_function_t _resource_list_remove(Disposable_t *resource) {
-    Disposable_t *prev, *current;
     dispose_function_t result = NULL;
 
-    critical_section_enter();
+    interrupt_suspend();
 
     if (resource && resource->_owner) {
-        if (resource->_owner->_resource_list) {
-            // first item on list check
-            if (resource->_owner->_resource_list == resource) {
-                resource->_owner->_resource_list = resource->_owner->_resource_list->_next;
-            }
-            else {
-                // search resource in list...
-                for (prev = resource->_owner->_resource_list, current = prev->_next; current && current != resource;
-                     prev = current, current = current->_next);
-
-                // ... and remove if found
-                if (current) {
-                    prev->_next = current->_next;
-                }
-            }
+        // first item on list check
+        if (resource->_owner->_resource_list == resource) {
+            resource->_owner->_resource_list = resource->_owner->_resource_list->_next;
         }
 
+        // remove from list
+        if (resource->_prev) {
+            resource->_prev->_next = resource->_next;
+        }
+
+        if (resource->_next) {
+            resource->_next->_prev = resource->_prev;
+        }
+
+        // optimization - when the same resource is marked again, _resource_list_remove shall not be called
         resource->_owner = NULL;
+
         // return parent dispose hook
         result = resource->_dispose_hook;
     }
 
-    critical_section_exit();
+    interrupt_restore();
 
     return result;
 }
 
 // -------------------------------------------------------------------------------------
 
-void resource_mark(Process_control_block_t *pcb, Disposable_t *resource, dispose_function_t dispose_hook) {
+void resource_mark(Process_control_block_t *owner, Disposable_t *resource, dispose_function_t dispose_hook) {
 
-    if ( ! pcb/* || ! resource*/) {
+    if ( ! owner) {
+        // resource shall not be released on process exit, but the dispose feature shall be preserved
+        resource->_resource_dispose_hook._dispose_hook = dispose_hook;
+        resource->_owner = NULL;
+
         return;
     }
 
-    // only pointer to pcb of running process is considered valid, since the pointer can contain random data
-    if (resource->_owner == pcb) {
+    // only pointer to owner of running process is considered valid, since the pointer can contain random data
+    if (resource->_owner == owner) {
         _resource_list_remove(resource);
     }
 
-    resource->_owner = pcb;
+    resource->_owner = owner;
     resource->_resource_dispose_hook._dispose_hook = (dispose_function_t) _resource_list_remove;
     resource->_dispose_hook = dispose_hook;
+    resource->_prev = NULL;
 
-    critical_section_enter();
+    interrupt_suspend();
 
-    resource->_next = pcb->_resource_list;
-    pcb->_resource_list = resource;
+    resource->_next = owner->_resource_list;
 
-    critical_section_exit();
+    if (owner->_resource_list) {
+        owner->_resource_list->_prev = resource;
+    }
+
+    owner->_resource_list = resource;
+
+    interrupt_restore();
 }
 
 #endif /* __RESOURCE_MANAGEMENT_ENABLE__ */
