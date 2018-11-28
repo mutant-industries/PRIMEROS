@@ -31,13 +31,13 @@ typedef struct List_item {
  * Add item to end of given list, allow bidirectional (round-robin) list traversal
  *  - no check whether the item already belongs to given list
  */
-void list_add_last(List_item_t **list, List_item_t *item);
+void list_add_last(List_item_t *item, List_item_t **list);
 
 /**
  * Remove item from given list
  *  - no check whether the item actually belongs to given list
  */
-void list_remove(List_item_t **list, List_item_t *item);
+void list_remove(List_item_t *item, List_item_t **list);
 
 
 #endif /* _SYS_COLLECTION_LIST_H_ */

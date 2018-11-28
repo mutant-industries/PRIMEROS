@@ -7,6 +7,7 @@ project(PrimerOS VERSION 0.1 LANGUAGES C)
 add_library(PrimerOS
         src/kernel.c
         src/collection/list.c
+        src/action.c
         src/process.c
         src/resource.c
         src/sync/semaphore.c)

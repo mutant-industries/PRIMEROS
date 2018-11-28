@@ -5,7 +5,7 @@
 #include <driver/interrupt.h>
 
 
-void list_add_last(List_item_t **list, List_item_t *item) {
+void list_add_last(List_item_t *item, List_item_t **list) {
 
     interrupt_suspend();
 
@@ -26,17 +26,25 @@ void list_add_last(List_item_t **list, List_item_t *item) {
     interrupt_restore();
 }
 
-void list_remove(List_item_t **list, List_item_t *item) {
+void list_remove(List_item_t *item, List_item_t **list) {
 
     interrupt_suspend();
 
-    // last item on list
-    if (item->_next == item && *list == item) {
+    if ( ! list) {
+        // item does not belong to any list, nothing to be done
+    }
+    else if (*list == item && (item->_next == item || ! item->_prev && ! item->_next)) {
+        // last item on list
         *list = NULL;
     }
     else {
-        item->_prev->_next = item->_next;
-        item->_next->_prev = item->_prev;
+        if (item->_prev) {
+            item->_prev->_next = item->_next;
+        }
+
+        if (item->_next) {
+            item->_next->_prev = item->_prev;
+        }
 
         if (*list == item) {
             *list = item->_next;
@@ -44,7 +52,7 @@ void list_remove(List_item_t **list, List_item_t *item) {
     }
 
     // discard all ties to the list
-    item->_next = item->_prev = item;
+    item->_next = item->_prev = NULL;
 
     interrupt_restore();
 }

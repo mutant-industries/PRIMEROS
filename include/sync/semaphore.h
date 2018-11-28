@@ -8,10 +8,8 @@
 #ifndef _SYS_SYNC_SEMAPHORE_H_
 #define _SYS_SYNC_SEMAPHORE_H_
 
-#include <stdbool.h>
 #include <stdint.h>
-#include <defs.h>
-#include <resource.h>
+#include <action.h>
 
 // -------------------------------------------------------------------------------------
 
@@ -25,23 +23,29 @@
 // -------------------------------------------------------------------------------------
 
 /**
- * Counting semaphore, public api
+ * Counting semaphore
  */
 typedef struct Semaphore {
     // enable dispose(Semaphore_t *)
     Disposable_t _disposable;
 
     // -------- state --------
-    // queue of processes blocked on this semaphore
-    Process_control_block_t *_queue;
+    // queue of actions waiting on this semaphore
+    Action_t *_queue;
     // semaphore state ~ permits count
     uint16_t permits_cnt;
 
     // -------- public api --------
     // non-blocking acquire
     int16_t (*try_acquire)(struct Semaphore *_this);
-    // acquire a permit from this semaphore, block until one is available, return passed signal if blocking
-    int16_t (*acquire)(struct Semaphore *_this);
+    // acquire a permit or block until one is available, return passed signal if blocking
+    //  - reset priority before inserting to semaphore queue to original process priority
+    //  - reschedule according to given config if set on return
+    int16_t (*acquire)(struct Semaphore *_this, Process_schedule_config_t *config);
+#ifndef __ASYNC_API_DISABLE__
+    // non-blocking action enqueue - execute if permit is available, execute on signal otherwise
+    int16_t (*acquire_async)(struct Semaphore *_this, Action_t *action);
+#endif
     // schedule first process in queue and pass signal to it, or increment semaphore permits count if queue empty
     int16_t (*signal)(struct Semaphore *_this, int16_t signal);
     // atomically wakeup all processes blocked on semaphore

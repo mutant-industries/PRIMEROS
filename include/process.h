@@ -10,8 +10,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <collection/list.h>
-#include <sync/semaphore.h>
+#include <action.h>
 #include <time.h>
 
 // -------------------------------------------------------------------------------------
@@ -20,6 +19,7 @@
  * Process api return codes
  */
 #define PROCESS_SUCCESS                                 KERNEL_API_SUCCESS
+#define PROCESS_INVALID_ARGUMENT                        KERNEL_API_INVALID_ARGUMENT
 #define PROCESS_CONTEXT_SWITCH_HANDLE_EMPTY             (-1)
 #define PROCESS_CONTEXT_SWITCH_HANDLE_UNSUPPORTED       (-2)
 #define PROCESS_KILLED                                  KERNEL_DISPOSED_RESOURCE_ACCESS
@@ -34,8 +34,8 @@
  * Process state holder and control structure
  */
 struct Process_control_block {
-    // enable round-robin chaining and dispose(Process_control_block_t *), process owner is parent process
-    List_item_t _chainable;
+    // enable reschedule trigger, round-robin chaining and dispose(Process_control_block_t *), process owner is parent process
+    Action_t _schedulable;
 #ifdef __RESOURCE_MANAGEMENT_ENABLE__
     // list of resources owned by process
     Disposable_t *_resource_list;
@@ -44,18 +44,16 @@ struct Process_control_block {
     uintptr_t _stack_pointer;
     // set once on process start
     uint16_t _original_priority;
-    // semaphore used for blocking wait on process termination
-    Semaphore_t _process_exit_sync;
+    // priority queue of actions to be executed on process disposal
+    Action_t *_dispose_action_queue;
     // exit code the process terminated with
     int16_t _exit_code;
+    // last update of effective priority - starts at _original_priority and is only allowed to increase, reset by yield()
+    uint16_t last_set_priority;
     // process execution status
     bool alive;
-    // last update of effective priority - starts at _original_priority and is only allowed to increase
-    uint16_t last_set_priority;
-    // actual priority used to sort processes
-    uint16_t effective_priority;
-    // the queue the process is linked to
-    struct Process_control_block **queue;
+    // config for wakeup from blocking states, where this information is nowhere else to be held (semaphore, mutex, process_wait())
+    Process_schedule_config_t schedule_config;
     // return value passing from blocking states
     int16_t blocked_state_return_value;
     // hook called on process exit / dispose
@@ -105,19 +103,31 @@ void process_create(Process_control_block_t *process, Process_create_config_t *c
 /**
  * Wait for given process to terminate, return actual return value of given process
  *  - return KERNEL_DISPOSED_RESOURCE_ACCESS if process terminated already or if process was killed
+ *  - reset priority to original process priority and wait for process to terminate otherwise
+ *  - reschedule according to given config if set on return
  */
-int16_t process_wait(Process_control_block_t *process);
+int16_t process_wait(Process_control_block_t *process, Process_schedule_config_t *config);
 
 /**
  * Kill given process, release all allocated resources if resource management is enabled
  */
 void process_kill(Process_control_block_t *process);
 
+#ifndef __ASYNC_API_DISABLE__
+
 /**
- * Initiate context switch, it only makes sense to yield, when
+ * non-blocking action enqueue - execute on target process termination, pass process exit code to action executor
+ *  - return false if process terminated already or if process was killed
+ */
+bool process_register_dispose_action(Process_control_block_t *process, Action_t *action);
+
+#endif
+
+/**
+ * Initiate context switch and reset priority to original process priority
  *  - preemptive scheduler is used, process wants to give up remaining CPU time on behalf of other process with the same priority
  *  - process removed itself from runnable process queue, shall wakeup on some event and no longer wishes to use CPU
- *  - calling yield in other cases is completely harmless, context switch is not initiated
+ *  - calling yield in other cases does not initiate context switch
  */
 void yield(void);
 
@@ -131,17 +141,32 @@ void process_exit(int16_t exit_code);
 // -------------------------------------------------------------------------------------
 
 /**
- * Insert process to runnable process queue
+ * Insert process to runnable process queue, update priority according to given config
  *  - also initiate context switch if process has higher priority than running process
  */
-void process_schedule(Process_control_block_t *process);
+void process_schedule(Process_control_block_t *process, Process_schedule_config_t *config);
 
 /**
- * Place process to given queue, order by effective priority
+ * Remove process from runnable queue and reset priority to original process priority
+ *  - also initiate context switch if process is running
  */
-bool process_enqueue(Process_control_block_t **queue, Process_control_block_t *process);
+void process_suspend(Process_control_block_t *process);
+
+
+/**
+ * Action executor that shall store signal to blocked_state_return_value of given process and reschedule it, assume that
+ *  - action arg_1 is process that suppose to be scheduled
+ *  - action arg_2 is (optional) process reschedule config
+ */
+void process_reschedule_executor(Action_t *, int16_t signal);
 
 // -------------------------------------------------------------------------------------
+
+/**
+ * Remove running process from runnable queue
+ */
+#define process_current_suspend() \
+    process_suspend(running_process);
 
 /**
  * Exit event hook

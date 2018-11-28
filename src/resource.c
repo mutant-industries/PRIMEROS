@@ -6,16 +6,10 @@
 #include <driver/interrupt.h>
 
 
-int16_t unsupported_after_disposed() {
-    return KERNEL_DISPOSED_RESOURCE_ACCESS;
-}
-
 /**
  * Only compiles if Disposable_t and Process_control_block_t contain required mapping structures
  */
 #ifdef __RESOURCE_MANAGEMENT_ENABLE__
-
-// -------------------------------------------------------------------------------------
 
 /**
  * This point reached on dispose() if process_mark_resource was called before
@@ -88,3 +82,17 @@ void resource_mark(Process_control_block_t *owner, Disposable_t *resource, dispo
 }
 
 #endif /* __RESOURCE_MANAGEMENT_ENABLE__ */
+
+// -------------------------------------------------------------------------------------
+
+int16_t unsupported_after_disposed() {
+    return KERNEL_DISPOSED_RESOURCE_ACCESS;
+}
+
+void __do_bytecopy(void *source, void *destination, uint16_t size) {
+    uintptr_t i, j;
+
+    for (i = (uintptr_t) source, j = (uintptr_t) destination; i < (((uintptr_t) source) + size); i++, j++) {
+        *((uint8_t *) j) = *((uint8_t *) i);
+    }
+}

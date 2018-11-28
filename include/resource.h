@@ -13,13 +13,6 @@
 
 // -------------------------------------------------------------------------------------
 
-/**
- * Disposed resource public api possible replacement
- */
-extern int16_t unsupported_after_disposed(void);
-
-// -------------------------------------------------------------------------------------
-
 #ifdef __RESOURCE_MANAGEMENT_ENABLE__
 
 /**
@@ -50,5 +43,30 @@ void resource_mark(Process_control_block_t *, Disposable_t *, dispose_function_t
 
 
 #endif /* __RESOURCE_MANAGEMENT_ENABLE__ */
+
+// -------------------------------------------------------------------------------------
+
+/**
+ * Disposed resource public api possible replacement
+ */
+extern int16_t unsupported_after_disposed(void);
+
+/**
+ * Byte-copy source structure to destination structure, zerofill destination if source empty
+ *  - assume both are the same size or source is attribute of destination starting at offset 0
+ */
+#define bytecopy(source, destination) \
+    if ( ! (source)) { \
+        __do_zerofill((void *) (destination), sizeof(*(source))); \
+    } \
+    else { \
+        __do_bytecopy((void *) (source), (void *) (destination), sizeof(*(source))); \
+    }
+
+/**
+ * Simple (unoptimized) memcpy
+ */
+void __do_bytecopy(void *source, void *destination, uint16_t size);
+
 
 #endif /* _SYS_RESOURCE_H_ */
