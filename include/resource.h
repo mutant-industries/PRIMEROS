@@ -25,7 +25,7 @@ struct Disposable {
     Process_control_block_t *_owner;
     // parent hook responsible of freeing up the resource
     dispose_function_t _dispose_hook;
-    // enable resource bi-directional chaining
+    // enable resource bidirectional chaining
     struct Disposable *_next;
     struct Disposable *_prev;
 
@@ -47,9 +47,9 @@ void resource_mark(Process_control_block_t *, Disposable_t *, dispose_function_t
 // -------------------------------------------------------------------------------------
 
 /**
- * Disposed resource public api possible replacement
+ * Disposed resource signal API possible replacement
  */
-extern int16_t unsupported_after_disposed(void);
+extern signal_t unsupported_after_disposed(void);
 
 /**
  * Byte-copy source structure to destination structure, zerofill destination if source empty

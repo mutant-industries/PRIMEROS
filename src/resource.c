@@ -85,7 +85,7 @@ void resource_mark(Process_control_block_t *owner, Disposable_t *resource, dispo
 
 // -------------------------------------------------------------------------------------
 
-int16_t unsupported_after_disposed() {
+signal_t unsupported_after_disposed() {
     return KERNEL_DISPOSED_RESOURCE_ACCESS;
 }
 

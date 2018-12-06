@@ -10,51 +10,78 @@
 
 #include <stdint.h>
 #include <action.h>
+#include <action/queue.h>
+#include <defs.h>
+#include <scheduler.h>
 
 // -------------------------------------------------------------------------------------
 
+#define semaphore(_semaphore) ((Semaphore_t *) (_semaphore))
+
 /**
- * Semaphore public api return codes
+ * Semaphore public API access
+ */
+#define semaphore_try_acquire(_semaphore) semaphore(_semaphore)->try_acquire(semaphore(_semaphore))
+#define semaphore_acquire(...) _SEMAPHORE_ACQUIRE_GET_MACRO(__VA_ARGS__, _semaphore_acquire_2, _semaphore_acquire_1)(__VA_ARGS__)
+#ifndef __ASYNC_API_DISABLE__
+#define semaphore_acquire_async(_semaphore, _action) semaphore(_semaphore)->acquire_async(semaphore(_semaphore), action(_action))
+#endif
+#define semaphore_signal(_semaphore, _signal) action_trigger(action(_semaphore), signal(_signal))
+
+//<editor-fold desc="variable-args - semaphore_acquire()" >
+#define _SEMAPHORE_ACQUIRE_GET_MACRO(_1,_2,NAME,...) NAME
+#define _semaphore_acquire_1(_semaphore) semaphore(_semaphore)->acquire(semaphore(_semaphore), NULL)
+#define _semaphore_acquire_2(_semaphore, _with_config) semaphore(_semaphore)->acquire(semaphore(_semaphore), _with_config)
+//</editor-fold>
+
+// getter, setter
+#define semaphore_permits_cnt(_semaphore) semaphore(_semaphore)->_permits_cnt
+
+/**
+ * Semaphore public API return codes
  */
 #define SEMAPHORE_SUCCESS           KERNEL_API_SUCCESS
 #define SEMAPHORE_DISPOSED          KERNEL_DISPOSED_RESOURCE_ACCESS
-#define SEMAPHORE_NO_PERMITS        (1)
+#define SEMAPHORE_INVALID_ARGUMENT  KERNEL_API_INVALID_ARGUMENT
+#define SEMAPHORE_NO_PERMITS        signal(1)
 
 // -------------------------------------------------------------------------------------
+
+typedef struct Semaphore Semaphore_t;
 
 /**
  * Counting semaphore
  */
-typedef struct Semaphore {
-    // enable dispose(Semaphore_t *)
-    Disposable_t _disposable;
+struct Semaphore {
+    // resource, semaphore_signal() on trigger
+    Action_t _signal;
 
     // -------- state --------
-    // queue of actions waiting on this semaphore
-    Action_t *_queue;
-    // semaphore state ~ permits count
-    uint16_t permits_cnt;
+    // queue of processes blocked on this semaphore
+    Action_queue_t _queue;
+    // current semaphore value
+    uint16_t _permits_cnt;
 
-    // -------- public api --------
+    // -------- public --------
     // non-blocking acquire
-    int16_t (*try_acquire)(struct Semaphore *_this);
+    signal_t (*try_acquire)(Semaphore_t *_this);
     // acquire a permit or block until one is available, return passed signal if blocking
-    //  - reset priority before inserting to semaphore queue to original process priority
-    //  - reschedule according to given config if set on return
-    int16_t (*acquire)(struct Semaphore *_this, Process_schedule_config_t *config);
+    //  - reset priority according to given config before inserting to semaphore queue
+    signal_t (*acquire)(Semaphore_t *_this, Schedule_config_t *with_config);
 #ifndef __ASYNC_API_DISABLE__
-    // non-blocking action enqueue - execute if permit is available, execute on signal otherwise
-    int16_t (*acquire_async)(struct Semaphore *_this, Action_t *action);
+    // non-blocking action enqueue - trigger if permit is available, trigger on signal otherwise
+    signal_t (*acquire_async)(Semaphore_t *_this, Action_t *action);
 #endif
-    // schedule first process in queue and pass signal to it, or increment semaphore permits count if queue empty
-    int16_t (*signal)(struct Semaphore *_this, int16_t signal);
-    // atomically wakeup all processes blocked on semaphore
-    int16_t (*signal_all)(struct Semaphore *_this, int16_t signal);
 
-} Semaphore_t;
+};
 
 // -------------------------------------------------------------------------------------
 
+/**
+ * Initialize semaphore with initial permits count
+ *  - semaphore signal() always removes action from semaphore queue before action is triggered
+ *    - action can move itself to some different queue or call acquire_async() if it needs to stay in the queue
+ */
 void semaphore_register(Semaphore_t *semaphore, uint16_t initial_permits_cnt);
 
 

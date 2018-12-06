@@ -2,21 +2,20 @@
 // Copyright (c) 2018-2019 Mutant Industries ltd.
 #include <sync/semaphore.h>
 #include <stddef.h>
-#include <process.h>
 #include <driver/interrupt.h>
+#include <process.h>
 
 
-// -------------------------------------------------------------------------------------
-
-static int16_t _try_acquire(Semaphore_t *_this) {
-    int16_t result = SEMAPHORE_NO_PERMITS;
+static signal_t _try_acquire(Semaphore_t *_this) {
+    signal_t result = SEMAPHORE_SUCCESS;
 
     interrupt_suspend();
 
-    if(_this->permits_cnt) {
-        _this->permits_cnt--;
-
-        result = SEMAPHORE_SUCCESS;
+    if(_this->_permits_cnt) {
+        _this->_permits_cnt--;
+    }
+    else {
+        result = SEMAPHORE_NO_PERMITS;
     }
 
     interrupt_restore();
@@ -24,73 +23,79 @@ static int16_t _try_acquire(Semaphore_t *_this) {
     return result;
 }
 
-static int16_t _acquire(Semaphore_t *_this, Process_schedule_config_t *config) {
+static signal_t _acquire(Semaphore_t *_this, Schedule_config_t *with_config) {
 
-    // possible priority shift for case when permits are available
-    process_schedule(running_process, config);
+    // store / reset schedule config
+    bytecopy(with_config, action_schedule_config(running_process));
 
     interrupt_suspend();
 
-    running_process->blocked_state_return_value = SEMAPHORE_SUCCESS;
+    running_process->blocked_state_signal = SEMAPHORE_SUCCESS;
 
     if (_try_acquire(_this)) {
-        // store / reset schedule config
-        bytecopy(config, &running_process->schedule_config);
-        // remove process from runnable queue and initiate context switch
-        process_current_suspend();
+        // remove running process from runnable queue
+        remove(running_process);
+        // initiate context switch, priority reset
+        schedulable_state_reset(running_process, false);
         // standard enqueue to semaphore queue
-        action_enqueue((Action_t *) running_process, &_this->_queue);
+        enqueue(running_process, &_this->_queue);
+    }
+    else {
+        // possible priority shift for case when permits are available
+        process_schedule(running_process, SEMAPHORE_SUCCESS);
     }
 
     interrupt_restore();
 
-    return running_process->blocked_state_return_value;
+    return running_process->blocked_state_signal;
 }
 
 #ifndef __ASYNC_API_DISABLE__
 
-static int16_t _acquire_async(Semaphore_t *_this, Action_t *action) {
+static signal_t _acquire_async(Semaphore_t *_this, Action_t *action) {
+    bool permit_available = false;
+
+    // sanity check
+    if (action == action(running_process)) {
+        return SEMAPHORE_INVALID_ARGUMENT;
+    }
 
     interrupt_suspend();
 
-    // standard enqueue to semaphore queue
-    action_enqueue(action, &_this->_queue);
-
     if (_try_acquire(_this)) {
-        // execute action if
-        _this->_queue->execute(_this->_queue, SEMAPHORE_SUCCESS);
+        // standard enqueue to action priority queue
+        enqueue(action, &_this->_queue);
+    }
+    else {
+        // semaphore queue empty, no need to enqueue the action since it can be triggered without delay
+        permit_available = true;
     }
 
     interrupt_restore();
+
+    if (permit_available) {
+        action_trigger(action, SEMAPHORE_SUCCESS);
+    }
 
     return SEMAPHORE_SUCCESS;
 }
 
 #endif
 
-static int16_t _signal(Semaphore_t *_this, int16_t signal) {
+static signal_t _signal(Semaphore_t *_this, signal_t signal) {
+    Action_t *action_to_signal = NULL;
 
     interrupt_suspend();
 
-    if ( ! _this->_queue) {
-        _this->permits_cnt++;
-    }
-    else {
-        _this->_queue->execute(_this->_queue, signal);
+    if ( ! (action_to_signal = action_queue_pop(&_this->_queue))) {
+        _this->_permits_cnt++;
     }
 
     interrupt_restore();
 
-    return SEMAPHORE_SUCCESS;
-}
-
-static int16_t _signal_all(Semaphore_t *_this, int16_t signal) {
-
-    interrupt_suspend();
-
-    action_execute_all(_this->_queue, signal);
-
-    interrupt_restore();
+    if (action_to_signal) {
+        action_trigger(action_to_signal, signal);
+    }
 
     return SEMAPHORE_SUCCESS;
 }
@@ -99,20 +104,18 @@ static int16_t _signal_all(Semaphore_t *_this, int16_t signal) {
 
 // Semaphore_t destructor
 static dispose_function_t _semaphore_release(Semaphore_t *_this) {
+    Action_t *action_to_signal;
 
-    interrupt_suspend();
-
-    action_execute_all(_this->_queue, SEMAPHORE_DISPOSED);
-
-    _this->try_acquire = (int16_t (*)(Semaphore_t *)) unsupported_after_disposed;
-    _this->acquire = (int16_t (*)(Semaphore_t *, Process_schedule_config_t *)) unsupported_after_disposed;
+    _this->try_acquire = (signal_t (*)(Semaphore_t *)) unsupported_after_disposed;
+    _this->acquire = (signal_t (*)(Semaphore_t *, Schedule_config_t *)) unsupported_after_disposed;
 #ifndef __ASYNC_API_DISABLE__
-    _this->acquire_async = (int16_t (*)(Semaphore_t *, Action_t *)) unsupported_after_disposed;
+    _this->acquire_async = (signal_t (*)(Semaphore_t *, Action_t *)) unsupported_after_disposed;
 #endif
-    _this->signal = (int16_t (*)(Semaphore_t *, int16_t)) unsupported_after_disposed;
-    _this->signal_all = (int16_t (*)(Semaphore_t *, int16_t)) unsupported_after_disposed;
+    action(_this)->trigger = (action_executor_t) unsupported_after_disposed;
 
-    interrupt_restore();
+    while (action_to_signal = action_queue_pop(&_this->_queue)) {
+        action_trigger(action_to_signal, SEMAPHORE_DISPOSED);
+    }
 
     return NULL;
 }
@@ -121,17 +124,15 @@ static dispose_function_t _semaphore_release(Semaphore_t *_this) {
 void semaphore_register(Semaphore_t *semaphore, uint16_t initial_permits_cnt) {
 
     // state
-    semaphore->_queue = NULL;
-    semaphore->permits_cnt = initial_permits_cnt;
+    action_register(action(semaphore), (dispose_function_t) _semaphore_release, (action_executor_t) _signal, NULL, NULL, NULL);
+    action_queue_init(&semaphore->_queue, true);
+    semaphore->_permits_cnt = initial_permits_cnt;
 
-    // public api
+    // public
     semaphore->try_acquire = _try_acquire;
     semaphore->acquire = _acquire;
 #ifndef __ASYNC_API_DISABLE__
     semaphore->acquire_async = _acquire_async;
 #endif
-    semaphore->signal = _signal;
-    semaphore->signal_all = _signal_all;
 
-    __dispose_hook_register(semaphore, _semaphore_release);
 }

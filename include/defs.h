@@ -13,37 +13,40 @@
 
 
 /**
- * disable subscription of actions to events to ensure strictly deterministic blocking api
+ * disable subscription of actions to events to ensure strictly deterministic blocking API
  */
 //#define __ASYNC_API_DISABLE__
 
 // -------------------------------------------------------------------------------------
 
 /**
- * Kernel api general return codes
+ * Action execution argument, process exit code
  */
-#define KERNEL_API_SUCCESS                  (0x0000)
-#define KERNEL_API_INVALID_ARGUMENT         (0x4000)
-#define KERNEL_DISPOSED_RESOURCE_ACCESS     (0x8000)
+typedef void * signal_t;
+
+/**
+ * Process priority / general sortable element priority
+ */
+typedef uint16_t priority_t;
+
+#define signal(signal) ((signal_t) (signal))
+
+/**
+ * Kernel API general return codes
+ */
+#define KERNEL_API_SUCCESS                  signal(0x0000)
+#define KERNEL_API_INVALID_ARGUMENT         signal(0x4000)
+#define KERNEL_DISPOSED_RESOURCE_ACCESS     signal(-9)
 
 // -------------------------------------------------------------------------------------
+
 /**
- * Defined in process.h, needed by process.h, resource.h and event.h
+ * Defined in process.h
  */
 typedef struct Process_control_block Process_control_block_t;
 
-
 /**
- * Process schedule configuration, needed by process.c and all kernel blocking api functions
- */
-typedef struct Process_schedule_config {
-    // priority to be set when scheduled
-    uint16_t priority;
-
-} Process_schedule_config_t;
-
-/**
- * Defined in process.c, needed by both process.h and resource.h
+ * Defined in scheduler.c
  */
 extern Process_control_block_t *running_process;
 

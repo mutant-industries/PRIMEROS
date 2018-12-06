@@ -17,7 +17,7 @@
  * Timer channel handle with normalization functions
  */
 typedef struct Timer_channel_handle_us_convertible {
-    // timer handle, enable dispose(Timer_channel_handle_us_convertible_t *)
+    // resource, timer handle
     Timer_channel_handle_t timer_handle;
     // normalization functions, assume 1 us == 1 tick if empty
     uint32_t (*ticks_to_us)(uint32_t ticks);
