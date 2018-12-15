@@ -14,36 +14,31 @@ static dispose_function_t _process_release(Process_control_block_t *_this) {
     while (_this->_resource_list) {
         Disposable_t *resource = _this->_resource_list;
 
-        // child process disposal (no matter whether _this process terminated or was killed) - proper kill to avoid deadlock
+        // child process disposal (no matter whether _this process terminated or was killed) - proper kill to stay consistent
         if (resource->_dispose_hook == _process_release) {
-            process_kill((Process_control_block_t *) resource);
+            process_kill(process(resource));
         }
 
         dispose(resource);
     }
 #endif
 
-    // process kill, notify (possible) mutex process was blocked on if leaving mutex queue
-    if (_this != running_process && _this->blocked_on_mutex) {
-        _this->blocked_on_mutex->_lock_timeout(_this->blocked_on_mutex, _this);
-    }
+    // disable priority inheritance from on_exit_action_queue
+    action_queue_on_head_priority_changed(&_this->on_exit_action_queue) = NULL;
+    // trigger all dispose actions registered on current process
+    action_queue_close(&_this->on_exit_action_queue, _this->_exit_code);
 
     interrupt_suspend();
 
     // prevent the process from being scheduled
-    _this->alive = false;
-
-    // trigger all dispose actions registered on current process
-    action_queue_trigger_all(&_this->_on_dispose_action_queue, _this->_exit_code);
-    // release all owned locks
-    action_queue_trigger_all(&_this->owned_mutex_queue, NULL);
+    action(_this)->trigger = (action_trigger_t) unsupported_after_disposed;
 
     // now is time to remove process from any (possible) queue
-    action_remove(action(_this));
+    action_release(_this);
 
     interrupt_restore();
 
-    // only yield on process exit, also no yield on init process dispose (kernel halt)
+    // only yield on process exit
     if (_this == running_process) {
         yield();    // ... and never return
     }
@@ -76,24 +71,25 @@ void process_register(Process_control_block_t *process, Process_create_config_t 
     process->_original_priority = create_config->priority;
 
     // prepare general schedule action on wakeup from blocking states
-    action(process)->trigger = (action_executor_t) schedule_executor;
-    action_schedule_process(process) = process;
-    zerofill(action_schedule_config(process));
-    action_schedule_config(process)->priority = create_config->priority;
+    zerofill(&process->_triggerable);
+    zerofill(process_get_schedule_config(process));
+    process_get_schedule_config(process)->priority = create_config->priority;
+    action_owner(process) = process;
 
-    // reset action queues
-    action_queue_init(&process->_on_dispose_action_queue, false);
-    action_queue_init(&process->owned_mutex_queue, false);
-    // reset (possible) mutex reference
-    process->blocked_on_mutex = NULL;
-
-    // exit code is only set on proper process termination
+    // reset process state
     process->_exit_code = PROCESS_SIGNAL_EXIT;
+    process->_local = NULL;
+    process->_waiting = false;
+    process->recursion_guard = false;
+
+    // reset action queues, inherit their priority
+    action_queue_create(&process->on_exit_action_queue, true, true, process, schedulable_state_reset);
+    action_queue_create(&process->pending_signal_queue, true, true, process, schedulable_state_reset);
 
     __dispose_hook_register(process, _process_release);
 
-    // make process ready to be scheduled
-    process->alive = true;
+    // make process schedulable on trigger
+    action(process)->trigger = (action_trigger_t) schedule_trigger;
 }
 
 void process_exit(signal_t exit_code) {
@@ -113,41 +109,23 @@ signal_t process_wait(Process_control_block_t *process, Schedule_config_t *with_
         return PROCESS_INVALID_ARGUMENT;
     }
 
-    // store / reset schedule config
-    bytecopy(with_config, action_schedule_config(running_process));
-
     interrupt_suspend();
-
-    running_process->blocked_state_signal = PROCESS_SIGNAL_EXIT;
-
-    if (process->alive) {
-        // remove running process from runnable queue
-        remove(running_process);
-        // initiate context switch, priority reset
-        schedulable_state_reset(running_process, false);
-        // register running process reschedule action on target process
-        enqueue(running_process, &process->_on_dispose_action_queue);
-    }
-    else {
-        // possible priority shift for case when process is not alive
-        process_schedule(running_process, PROCESS_SIGNAL_EXIT);
-    }
+    // suspend running process if target is alive, apply given config
+    suspend(process_is_alive(process), with_config, PROCESS_SIGNAL_EXIT, &process->on_exit_action_queue);
 
     interrupt_restore();
 
     return running_process->blocked_state_signal;
 }
 
-#ifndef __ASYNC_API_DISABLE__
-
-bool process_register_dispose_action(Process_control_block_t *process, Action_t *action) {
+bool process_register_exit_action(Process_control_block_t *process, Action_t *action) {
     bool process_alive;
 
     interrupt_suspend();
 
-    if ((process_alive = process->alive)) {
-        // add action on dispose list of given process, sort by priority
-        enqueue(action, &process->_on_dispose_action_queue);
+    if ((process_alive = process_is_alive(process))) {
+        // enqueue action to exit action queue on given process, sort by priority, let process inherit priority
+        action_queue_insert(&process->on_exit_action_queue, action);
     }
 
     interrupt_restore();
@@ -155,12 +133,10 @@ bool process_register_dispose_action(Process_control_block_t *process, Action_t 
     return process_alive;
 }
 
-#endif
-
 void process_kill(Process_control_block_t *process) {
 
     // end process, release all related resources
     dispose(process);
     // process might be already executing dispose on itself with lower priority
-    process_wait(process, action_schedule_config(running_process));
+    process_wait(process, process_get_schedule_config(running_process));
 }

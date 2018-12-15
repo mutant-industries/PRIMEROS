@@ -11,6 +11,8 @@
 #include <stdbool.h>
 #include <driver/vector.h>
 #include <action.h>
+#include <action/queue.h>
+#include <defs.h>
 
 // -------------------------------------------------------------------------------------
 
@@ -31,7 +33,7 @@
  * Process schedule configuration
  */
 typedef struct Schedule_config {
-    // priority to be set when scheduled
+    // lowest priority to be set when scheduled
     priority_t priority;
 
 } Schedule_config_t;
@@ -39,28 +41,57 @@ typedef struct Schedule_config {
 /**
  * Insert process to runnable process queue, update priority according to given config
  *  - also initiate context switch if process has higher priority than running process
- *  - please note, that this function is only intended to be called from {@see schedule_executor}
+ *  - please note, that this function is only intended to be called from schedule_trigger or signal_trigger
  */
 void schedule(Process_control_block_t *process, Schedule_config_t *config);
 
 /**
- *
- * Reset schedulable state and initiate context switch if another process becomes head of runnable queue
- * - reset schedule config on running process
- * - set priority to original priority or inherit priority of (possibly) owned mutex with highest priority
- * - initiate context switch if another process becomes head of runnable queue
+ * Store signal to blocked_state_signal of action owner snd schedule it on trigger
  */
-#define yield() schedulable_state_reset(running_process, true);
+void schedule_trigger(Action_t *_this, signal_t signal);
 
 /**
  * Reset schedulable state and initiate context switch if another process becomes head of runnable queue
- * - if priority_lowest is set, {@see yield()}
- * - if not, then schedule config is not reset and if priority from config is higher that result priority,
- * then that one is used instead, also if result priority is same as current process priority, this function has no effect
+ *  - reset schedule config on running process
+ *  - set priority to original or inherit priority - for priority inheritance {@see schedulable_state_reset}
+ *  - place process behind all processes with the same priority
+ *  - initiate context switch if another process becomes head of runnable queue
  */
-void schedulable_state_reset(Process_control_block_t *process, bool priority_lowest);
+void yield(void);
+
+/**
+ * Reset schedulable state and initiate context switch if another process becomes head of runnable queue
+ *  - set priority to max(original process priority, priority_lowest, priority from schedule config)
+ *  - set priority at least to queue head priority of 'exit actions queue' (mutexes, actions waiting for process termination)
+ *  - set priority at least to queue head priority of 'pending signals queue'
+ *  - if result priority equals current process priority and priority_lowest == PRIORITY_RESET, then
+ * place process behind all processes with the same priority
+ * - function signature corresponds to action_set_priority() for action type process
+ */
+void schedulable_state_reset(Process_control_block_t *process, priority_t priority_lowest);
+
+/**
+ * Switch running process execution state to 'waiting' for incoming signal
+ *  - signal inserts itself to pending signals of process on trigger and if process is waiting for signal, then it is scheduled
+ *  - process inherits priority if pending (unprocessed) signals
+ *  - signal handler is executed and if handler returns false wait loop breaks and wait() returns
+ */
+signal_t wait(void);
+
+/**
+ * Remove process from runnable queue if suspend_condition set and insert to (optional) queue to wait for trigger
+ *  - if given 'suspend_condition' is false, just apply with_config on running process and return 'non_blocking_return'
+ *  - if blocking then return signal passed to process schedule trigger
+ */
+signal_t suspend(bool suspend_condition, Schedule_config_t *with_config, signal_t non_blocking_return, Action_queue_t *queue);
 
 // -------------------------------------------------------------------------------------
+
+/**
+ * Initiate context switch
+ *  - context switch is actually triggered only if running process is not head of runnable queue
+ */
+void context_switch_trigger(void);
 
 /**
  * Set context switch handle during system start and initialize processing environment

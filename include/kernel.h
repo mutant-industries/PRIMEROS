@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: BSD-3-Clause */
 /*
- *  PrimerOS kernel API
+ *  PrimerOS kernel entry point
  *
  *  Copyright (c) 2018-2019 Mutant Industries ltd.
  */
@@ -10,6 +10,7 @@
 
 #include <stdbool.h>
 #include <defs.h>
+#include <scheduler.h>
 #include <time.h>
 
 

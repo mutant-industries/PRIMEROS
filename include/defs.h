@@ -13,9 +13,18 @@
 
 
 /**
- * disable subscription of actions to events to ensure strictly deterministic blocking API
+ * do not start event processor, do not allocate memory for event processor
+ *  - eventing can still be used however events must be created with custom execution context, because there is no default context
  */
-//#define __ASYNC_API_DISABLE__
+//#define __EVENT_PROCESSOR_DISABLE__
+
+/**
+ * stack size of event default execution context - set according to what type of actions are going to be subscribed to events,
+ * the default value [0xFF] is just estimated worst case for development environment
+ *  - the absolute minimum depends on memory model used, plus always consider reserved space for interrupt servicing
+ *  - please also consider that compiler optimization level affects minimum stack size
+ */
+//#define __EVENT_PROCESSOR_STACK_SIZE__        0xFF
 
 // -------------------------------------------------------------------------------------
 
@@ -28,6 +37,12 @@ typedef void * signal_t;
  * Process priority / general sortable element priority
  */
 typedef uint16_t priority_t;
+
+/**
+ * Reserved priority level - passing to schedulable_state_reset() causes process to become last schedulable process
+ * among processes on the same priority level
+ */
+#define PRIORITY_RESET  ((priority_t) (-1))
 
 #define signal(signal) ((signal_t) (signal))
 

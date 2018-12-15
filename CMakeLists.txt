@@ -8,14 +8,17 @@ add_library(PrimerOS
         src/kernel.c
         src/resource.c
         src/collection/deque.c
-        src/collection/sorted/queue.c
+        src/collection/sorted/set.c
         src/action.c
         src/action/queue.c
-        src/action/schedule.c
+        src/action/proxy.c
+        src/action/signal.c
         src/process.c
         src/scheduler.c
         src/sync/semaphore.c
-        src/sync/mutex.c)
+        src/sync/mutex.c
+        src/event.c
+        src/subscription.c)
 
 target_include_directories(PrimerOS
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>

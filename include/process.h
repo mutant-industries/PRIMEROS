@@ -8,13 +8,13 @@
 #ifndef _SYS_PROCESS_H_
 #define _SYS_PROCESS_H_
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 #include <driver/cpu.h>
 #include <action.h>
 #include <action/queue.h>
-#include <action/schedule.h>
-#include <sync/mutex.h>
+#include <scheduler.h>
 
 // -------------------------------------------------------------------------------------
 
@@ -24,13 +24,22 @@
  * Process public API access
  */
 #define process_create(...) _PROCESS_CREATE_GET_MACRO(__VA_ARGS__, _process_create_2, _process_create_1)(__VA_ARGS__)
-#define process_schedule(_process, _blocked_state_signal) action_trigger(action(_process), signal(_blocked_state_signal))
+#define process_schedule(_process, _blocked_state_signal) action_trigger(_process, _blocked_state_signal)
 
-//<editor-fold desc="variable-args - process_create()" >
+//<editor-fold desc="variable-args - process_create()">
 #define _PROCESS_CREATE_GET_MACRO(_1,_2,NAME,...) NAME
-#define _process_create_1(_process) process_register((_process), NULL)
-#define _process_create_2(_process, _create_config) process_register((_process), _create_config)
+#define _process_create_1(_process) process_register(_process, NULL)
+#define _process_create_2(_process, _create_config) process_register(_process, _create_config)
 //</editor-fold>
+
+// getter, setter
+#define process_is_schedulable(_process) (action(_process)->trigger == (action_trigger_t) schedule_trigger)
+#define process_is_alive(_process) process_is_schedulable(_process)
+#define process_get_schedule_config(_process) (&(process(_process)->schedule_config))
+#define process_get_original_priority(_process) (_process)->_original_priority
+#define process_waiting(_process) (_process)->_waiting
+#define process_local(_process) (_process)->_local
+#define process_current_local() process_local(running_process)
 
 /**
  * Process API return codes
@@ -69,7 +78,7 @@ typedef struct Process_create_config {
  */
 struct Process_control_block {
     // resource (process owner is parent process), schedule() on trigger
-    Action_schedule_t _schedulable;
+    Action_t _triggerable;
 #ifdef __RESOURCE_MANAGEMENT_ENABLE__
     // list of resources owned by process
     Disposable_t *_resource_list;
@@ -78,20 +87,24 @@ struct Process_control_block {
     data_pointer_register_t _stack_pointer;
     // set once on process start
     priority_t _original_priority;
-    // queue of actions to be executed on process disposal sorted by action priority
-    Action_queue_t _on_dispose_action_queue;
     // exit code the process terminated with
     signal_t _exit_code;
-    // process initialization parameters, allows process restart
-    Process_create_config_t create_config;
-    // queue of owned locks
-    Action_queue_t owned_mutex_queue;
-    // mutex the process is blocked on and which (possibly) inherits priority of process
-    Mutex_t *blocked_on_mutex;
-    // process execution status
-    bool alive;
+    // process local storage
+    void *_local;
+    // process execution status - blocked waiting for signal
+    bool _waiting;
+    // recursive action priority update
+    bool recursion_guard;
     // return value passing from blocking states
     signal_t blocked_state_signal;
+    // process initialization parameters, allows process restart
+    Process_create_config_t create_config;
+    // config for wakeup from blocking states
+    Schedule_config_t schedule_config;
+    // queue of actions to be executed on process disposal sorted by action priority
+    Action_queue_t on_exit_action_queue;
+    // queue of actions waiting to be executed within
+    Action_queue_t pending_signal_queue;
 
 };
 
@@ -107,7 +120,7 @@ void process_register(Process_control_block_t *process, Process_create_config_t 
 /**
  * Return address of this function is initialized on process stack, shall be reached when process main function returns
  *  - also can be called any other time with the same effect
- *  - return value is passed as signal to all actions on process dispose action queue
+ *  - return value is passed as signal to all actions in process dispose action queue
  */
 void process_exit(signal_t exit_code);
 
@@ -115,19 +128,16 @@ void process_exit(signal_t exit_code);
  * Wait for given process to terminate, return actual return value of given process
  *  - reset priority according to given config
  *  - return PROCESS_SIGNAL_EXIT if process terminated already or if process was killed
- *  - wait for process to terminate otherwise
+ *  - wait for process to terminate and return it's exit code otherwise
  */
 signal_t process_wait(Process_control_block_t *process, Schedule_config_t *with_config);
 
-#ifndef __ASYNC_API_DISABLE__
-
 /**
- * non-blocking action enqueue - execute on target process termination, pass process exit code to action executor
+ * non-blocking action enqueue - execute on target process termination, pass process exit code to action trigger
  *  - return false if process terminated already or if process was killed
+ *  - please note, that process inherits priority of actions waiting for it's termination
  */
-bool process_register_dispose_action(Process_control_block_t *process, Action_t *action);
-
-#endif
+bool process_register_exit_action(Process_control_block_t *process, Action_t *action);
 
 /**
  * Kill given process, release all allocated resources if resource management is enabled, wait for process to terminate

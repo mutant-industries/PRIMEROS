@@ -8,6 +8,7 @@
 #ifndef _SYS_SYNC_MUTEX_H_
 #define _SYS_SYNC_MUTEX_H_
 
+#include <stddef.h>
 #include <stdint.h>
 #include <action.h>
 #include <action/queue.h>
@@ -25,10 +26,10 @@
 #define mutex_lock(...) _MUTEX_LOCK_GET_MACRO(__VA_ARGS__, _mutex_lock_2, _mutex_lock_1)(__VA_ARGS__)
 #define mutex_unlock(_mutex) mutex(_mutex)->unlock(mutex(_mutex))
 
-//<editor-fold desc="variable-args - mutex_lock()" >
+//<editor-fold desc="variable-args - mutex_lock()">
 #define _MUTEX_LOCK_GET_MACRO(_1,_2,NAME,...) NAME
 #define _mutex_lock_1(_mutex) mutex(_mutex)->lock(mutex(_mutex), NULL)
-#define _mutex_lock_2(_mutex, __with_config) mutex(_mutex)->lock(mutex(_mutex), __with_config)
+#define _mutex_lock_2(_mutex, _with_config) mutex(_mutex)->lock(mutex(_mutex), _with_config)
 //</editor-fold>
 
 /**
@@ -48,7 +49,7 @@ typedef struct Mutex Mutex_t;
  */
 struct Mutex {
     // resource, release() on trigger
-    Action_t _releasable;
+    Action_t _triggerable;
 
     // -------- state --------
     // queue of processes blocked on this mutex
@@ -56,19 +57,15 @@ struct Mutex {
     // count how many times has owner acquired current mutex
     uint16_t _nesting_cnt;
 
-    // -------- protected --------
-    void (*_lock_timeout)(Mutex_t *_this, Process_control_block_t *process);
-
     // -------- public --------
     // non-blocking lock
     signal_t (*try_lock)(Mutex_t *_this);
     // acquire lock or block until lock available
-    // - when lock is acquired, with_config shall be used to schedule process
     // - if mutex is locked, reset priority according to given config before inserting to mutex queue
-    //   - if this process has highest priority in mutex queue, priority of mutex is set to that priority
+    //   - if current process has highest priority in mutex queue, priority of mutex is inherited
     //   - mutex owner priority is always set at least to the priority of mutex itself
     signal_t (*lock)(Mutex_t *_this, Schedule_config_t *with_config);
-    // release lock, reset priority and wakeup next waiting process
+    // release mutex, reset priority and wakeup next waiting process
     // - also change priority of mutex to priority of first process in mutex queue or to 0 if mutex queue is empty
     signal_t (*unlock)(Mutex_t *_this);
 
@@ -76,6 +73,12 @@ struct Mutex {
 
 // -------------------------------------------------------------------------------------
 
+/**
+ * Initialize mutex
+ *  - mutex inherits priority of its queue (mutex priority equals queue head priority or 0 if queue is empty)
+ *  - process inherits priority of 'on_exit_action_queue' which is where mutex is inserted when acquired {@see schedulable_state_reset}
+ *  - if process is killed while it holds mutex or terminates without releasing it, then it is released automatically
+ */
 void mutex_register(Mutex_t *mutex);
 
 

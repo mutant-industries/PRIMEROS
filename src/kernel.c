@@ -2,6 +2,7 @@
 // Copyright (c) 2018-2019 Mutant Industries ltd.
 #include <kernel.h>
 #include <driver/interrupt.h>
+#include <event.h>
 #include <process.h>
 
 
@@ -11,8 +12,9 @@ signal_t kernel_start(Process_control_block_t *init_process, priority_t init_pro
     signal_t module_init_result;
 
     // only wakeup if it makes sense
-    wakeup &= init_process->alive;
+    wakeup &= process_is_alive(init_process);
 
+    // initialize context switching and runnable queue
     if (module_init_result = scheduler_reinit(context_switch_handle, ! wakeup)) {
         return module_init_result;
     }
@@ -25,14 +27,19 @@ signal_t kernel_start(Process_control_block_t *init_process, priority_t init_pro
         process_create(init_process);
         // ... and schedule it
         process_schedule(init_process, 0);
-        // init process will become owner of all resources registered in sys_init()
-        running_process = init_process;
+    }
+
+    // init process will become owner of all resources registered
+    running_process = init_process;
+
+#ifndef __EVENT_PROCESSOR_DISABLE__
+    event_processor_init();
+#endif
+
+    if ( ! wakeup) {
         // execute user initialization
         (*sys_init)();
     }
-
-    // wakeup - prepare for context switch
-    running_process = init_process;
 
     yield();
 

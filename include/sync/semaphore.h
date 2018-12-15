@@ -8,6 +8,7 @@
 #ifndef _SYS_SYNC_SEMAPHORE_H_
 #define _SYS_SYNC_SEMAPHORE_H_
 
+#include <stddef.h>
 #include <stdint.h>
 #include <action.h>
 #include <action/queue.h>
@@ -23,12 +24,10 @@
  */
 #define semaphore_try_acquire(_semaphore) semaphore(_semaphore)->try_acquire(semaphore(_semaphore))
 #define semaphore_acquire(...) _SEMAPHORE_ACQUIRE_GET_MACRO(__VA_ARGS__, _semaphore_acquire_2, _semaphore_acquire_1)(__VA_ARGS__)
-#ifndef __ASYNC_API_DISABLE__
 #define semaphore_acquire_async(_semaphore, _action) semaphore(_semaphore)->acquire_async(semaphore(_semaphore), action(_action))
-#endif
-#define semaphore_signal(_semaphore, _signal) action_trigger(action(_semaphore), signal(_signal))
+#define semaphore_signal(_semaphore, _signal) action_trigger(action(_semaphore), _signal)
 
-//<editor-fold desc="variable-args - semaphore_acquire()" >
+//<editor-fold desc="variable-args - semaphore_acquire()">
 #define _SEMAPHORE_ACQUIRE_GET_MACRO(_1,_2,NAME,...) NAME
 #define _semaphore_acquire_1(_semaphore) semaphore(_semaphore)->acquire(semaphore(_semaphore), NULL)
 #define _semaphore_acquire_2(_semaphore, _with_config) semaphore(_semaphore)->acquire(semaphore(_semaphore), _with_config)
@@ -54,10 +53,10 @@ typedef struct Semaphore Semaphore_t;
  */
 struct Semaphore {
     // resource, semaphore_signal() on trigger
-    Action_t _signal;
+    Action_t _triggerable;
 
     // -------- state --------
-    // queue of processes blocked on this semaphore
+    // queue of processes (actions) waiting on this semaphore
     Action_queue_t _queue;
     // current semaphore value
     uint16_t _permits_cnt;
@@ -68,10 +67,8 @@ struct Semaphore {
     // acquire a permit or block until one is available, return passed signal if blocking
     //  - reset priority according to given config before inserting to semaphore queue
     signal_t (*acquire)(Semaphore_t *_this, Schedule_config_t *with_config);
-#ifndef __ASYNC_API_DISABLE__
     // non-blocking action enqueue - trigger if permit is available, trigger on signal otherwise
     signal_t (*acquire_async)(Semaphore_t *_this, Action_t *action);
-#endif
 
 };
 
@@ -80,7 +77,6 @@ struct Semaphore {
 /**
  * Initialize semaphore with initial permits count
  *  - semaphore signal() always removes action from semaphore queue before action is triggered
- *    - action can move itself to some different queue or call acquire_async() if it needs to stay in the queue
  */
 void semaphore_register(Semaphore_t *semaphore, uint16_t initial_permits_cnt);
 

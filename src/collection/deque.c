@@ -3,15 +3,19 @@
 #include <collection/deque.h>
 #include <stdbool.h>
 #include <stddef.h>
-#include <driver/interrupt.h>
 
 
-static void _deque_insert(Deque_item_t *item, Deque_item_t **container, bool last) {
+void deque_insert_first(Deque_item_t **container, Deque_item_t *item) {
 
-    interrupt_suspend();
+    deque_insert_last(container, item);
+    // just make tail new head
+    *container = item;
+}
+
+void deque_insert_last(Deque_item_t **container, Deque_item_t *item) {
 
     if (item->_container) {
-        deque_remove(item);
+        deque_item_remove(item);
     }
 
     if ( ! *container) {
@@ -25,22 +29,9 @@ static void _deque_insert(Deque_item_t *item, Deque_item_t **container, bool las
         item->_prev = (*container)->_prev;
         (*container)->_prev->_next = item;
         (*container)->_prev = item;
-
-        // make tail new head
-        if ( ! last) {
-            *container = item;
-        }
     }
 
-    interrupt_restore();
-}
-
-void deque_insert_first(Deque_item_t *item, Deque_item_t **container) {
-    _deque_insert(item, container, false);
-}
-
-void deque_insert_last(Deque_item_t *item, Deque_item_t **container) {
-    _deque_insert(item, container, true);
+    item->_container = container;
 }
 
 void deque_insert_after(Deque_item_t *item, Deque_item_t *after_item) {
@@ -50,10 +41,8 @@ void deque_insert_after(Deque_item_t *item, Deque_item_t *after_item) {
         return;
     }
 
-    interrupt_suspend();
-
     if (item->_container) {
-        deque_remove(item);
+        deque_item_remove(item);
     }
 
     item->_next = after_item->_next;
@@ -63,8 +52,6 @@ void deque_insert_after(Deque_item_t *item, Deque_item_t *after_item) {
     after_item->_next = item;
 
     item->_container = after_item->_container;
-
-    interrupt_restore();
 }
 
 void deque_insert_before(Deque_item_t *item, Deque_item_t *before_item) {
@@ -74,22 +61,16 @@ void deque_insert_before(Deque_item_t *item, Deque_item_t *before_item) {
         return;
     }
 
-    interrupt_suspend();
-
     deque_insert_after(item, before_item->_prev);
 
     if (*(before_item->_container) == before_item) {
         *(before_item->_container) = item;
     }
-
-    interrupt_restore();
 }
 
 // -------------------------------------------------------------------------------------
 
-void deque_remove(Deque_item_t *item) {
-
-    interrupt_suspend();
+void deque_item_remove(Deque_item_t *item) {
 
     if ( ! item->_container) {
         // item does not belong to any container, nothing to be done
@@ -116,6 +97,4 @@ void deque_remove(Deque_item_t *item) {
     item->_next = item->_prev = NULL;
     // discard reference to container
     item->_container = NULL;
-
-    interrupt_restore();
 }

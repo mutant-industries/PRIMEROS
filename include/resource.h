@@ -38,6 +38,7 @@ struct Disposable {
 
 /**
  * Set resource owner, add resource to resource_list of it's owner, register optional dispose hook
+ *  - if owner is empty, just set dispose function on giver resource
  */
 void resource_mark(Process_control_block_t *, Disposable_t *, dispose_function_t);
 
