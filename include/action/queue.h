@@ -10,9 +10,8 @@
 
 #include <stdbool.h>
 #include <stddef.h>
-#include <action.h>
 #include <defs.h>
-
+#include <action.h>
 
 // -------------------------------------------------------------------------------------
 
@@ -21,39 +20,31 @@
 /**
  * Action queue public API
  */
-#define action_queue_create(...) _ACTION_QUEUE_CREATE_GET_MACRO(__VA_ARGS__, __aqc_6, __aqc_5, __aqc_4, __aqc_3)(__VA_ARGS__)
+#define action_queue_create(...) _ACTION_QUEUE_CREATE_GET_MACRO(__VA_ARGS__, __aqc_5, __aqc_4, __aqc_3, __aqc_2)(__VA_ARGS__)
 #define action_queue_insert(_queue, _action) (_queue)->insert(_queue, action(_action))
 #define action_queue_pop(_queue) (_queue)->pop(_queue)
 #define action_queue_trigger_all(_queue, _signal) (_queue)->trigger_all((_queue), signal(_signal))
 #define action_queue_close(_queue, _signal) (_queue)->close((_queue), signal(_signal))
 
 //<editor-fold desc="variable-args - action_queue_create()">
-#define _ACTION_QUEUE_CREATE_GET_MACRO(_1,_2,_3,_4,_5,_6,NAME,...) NAME
+#define _ACTION_QUEUE_CREATE_GET_MACRO(_1,_2,_3,_4,_5,NAME,...) NAME
+#define __aqc_2(_queue, _sorted) \
+    action_queue_init(action_queue(_queue), _sorted, true, NULL, NULL)
 #define __aqc_3(_queue, _sorted, _strict_sorting) \
-    action_queue_init(action_queue(_queue), _sorted, _strict_sorting, NULL, NULL, NULL)
+    action_queue_init(action_queue(_queue), _sorted, _strict_sorting, NULL, NULL)
 #define __aqc_5(_queue, _sorted, _strict_sorting, _owner, _on_head_priority_changed) \
-    action_queue_init(action_queue(_queue), _sorted, _strict_sorting, _owner, ((head_priority_changed_hook_t) (_on_head_priority_changed)), NULL)
-#define __aqc_6(_queue, _sorted, _strict_sorting, _owner, _on_head_priority_changed, _on_released) \
-    action_queue_init(action_queue(_queue), _sorted, _strict_sorting, _owner, ((head_priority_changed_hook_t) (_on_head_priority_changed)), ((action_released_hook_t) (_on_released)))
-
+    action_queue_init(action_queue(_queue), _sorted, _strict_sorting, _owner, ((head_priority_changed_hook_t) (_on_head_priority_changed)))
 //</editor-fold>
 
 // getter, setter
 #define action_queue_head(_queue) (_queue)->_head
 #define action_queue_is_empty(_queue) ( ! action_queue_head(_queue))
 #define action_queue_is_closed(_queue) ((_queue)->insert == (bool (*)(Action_queue_t *, Action_t *)) unsupported_after_disposed)
+#define action_queue_owner(_queue) (_queue)->_owner
 #define action_queue_get_head_priority(_queue) (_queue)->_head_priority
-#define action_queue_on_action_released(_queue) (_queue)->_on_action_released
 #define action_queue_on_head_priority_changed(_queue) (_queue)->_on_head_priority_changed
 
 // -------------------------------------------------------------------------------------
-
-typedef struct Action_queue Action_queue_t;
-
-/**
- * Action queue 'on released' hook interface
- */
-typedef void (*action_released_hook_t)(void *owner, Action_t *, Action_queue_t *origin);
 
 /**
  * Action queue 'on head priority changed' hook interface
@@ -68,15 +59,13 @@ typedef void (*head_priority_changed_hook_t)(void *owner, priority_t, Action_que
 struct Action_queue {
     // action with highest priority in queue if sorted, first inserted if FIFO
     Action_t *_head;
-    // owner passed to following hooks
+    // owner passed to following hook
     void *_owner;
-    // hook triggered after action is removed from queue
-    action_released_hook_t _on_action_released;
     // hook triggered when priority of queue head changes, only applies for sorted queue
     head_priority_changed_hook_t _on_head_priority_changed;
 
     // -------- state --------
-    // priority of item with highest priority, only applies for sorted queue
+    // priority of item with highest priority (applies for sorted queue)
     priority_t _head_priority;
     // iterator state for thread-safe trigger_all
     Action_t *_iterator;
@@ -86,9 +75,13 @@ struct Action_queue {
     bool (*_set_action_priority)(Action_t *, priority_t, Action_queue_t *_this);
 
     // -------- public --------
+    // insert given action to queue, return true if action becomes queue head (applies for sorted queue)
     bool (*insert)(Action_queue_t *_this, Action_t *);
+    // release and return action with highest priority if sorted / first inserted if FIFO / NULL if empty
     Action_t *(*pop)(Action_queue_t *_this);
+    // thread-safe trigger all actions in queue, pass given signal to each action
     void (*trigger_all)(Action_queue_t *_this, signal_t);
+    // trigger_all() and release all actions if they do not release themselves, insert is no longer possible
     void (*close)(Action_queue_t *_this, signal_t);
 
 };
@@ -111,7 +104,7 @@ struct Action_queue {
   *   - queue might no longer be sorted
   *   -> this approach is useful when order of execution does not matter that much, such as event subscription list,
   * this also makes perfect sense, when changing priority of action, that shall remove itself from queue on trigger
-  * @param owner optional owner passed to following hooks
+  * @param owner optional owner passed to following hook
   * @param on_head_priority_changed
   *  - optional callback, only applies if 'sorted' is set, interrupts are disabled during execution, triggered when:
   *   - new action with higher priority than current queue head is inserted
@@ -121,11 +114,9 @@ struct Action_queue {
   *  - hook interface is compatible with action_default_set_priority() and if hook is set to this function,
   * then queue owner inherits priority of queue head
   *  - within hook execution it is only allowed to change priority of single action, {@see action_default_set_priority}
-  * @param on_released
-  *  - optional callback, executed after action is removed from given queue, interrupts are disabled during execution
   */
 void action_queue_init(Action_queue_t *queue, bool sorted, bool strict_sorting, void *owner,
-        head_priority_changed_hook_t on_head_priority_changed, action_released_hook_t on_released);
+        head_priority_changed_hook_t on_head_priority_changed);
 
 // -------------------------------------------------------------------------------------
 

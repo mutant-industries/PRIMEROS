@@ -24,6 +24,7 @@
 #define action_trigger(_action, _signal) action(_action)->trigger(action(_action), signal(_signal))
 #define action_release(_action) action_default_release(action(_action))
 #define action_set_priority(_action, _priority) action_default_set_priority(action(_action), _priority)
+#define action_released_callback(_action, _queue) action(_action)->on_released(action(_action), _queue)
 
 //<editor-fold desc="variable-args - action_create()">
 #define _ACTION_CREATE_GET_MACRO(_1,_2,_3,_4,NAME,...) NAME
@@ -39,6 +40,7 @@
 #define action_owner_attr arg_1
 #define action_owner(_action) action_attr(_action, action_owner_attr)
 #define action_handler(_action) action_attr(_action, handler)
+#define action_on_released(_action) action(_action)->on_released
 
 // -------------------------------------------------------------------------------------
 
@@ -66,6 +68,12 @@ typedef void (*action_trigger_t)(Action_t *_this, signal_t signal);
 typedef bool (*action_handler_t)(action_arg_t, action_arg_t);
 
 /**
+ * Action 'on released' hook interface - triggered after action is removed from queue
+ *  - interrupts are disabled during execution
+ */
+typedef void (*action_released_hook_t)(Action_t *_this, Action_queue_t *origin);
+
+/**
  * Action descriptor
  */
 struct Action {
@@ -80,6 +88,7 @@ struct Action {
     // -------- abstract public --------
     action_trigger_t trigger;
     action_handler_t handler;
+    action_released_hook_t on_released;
 
 };
 

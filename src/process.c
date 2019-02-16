@@ -7,7 +7,12 @@
 
 
 // Process_control_block_t destructor
-static dispose_function_t _process_release(Process_control_block_t *_this) {
+static dispose_function_t _process_dispose(Process_control_block_t *_this) {
+
+#ifndef __SIGNAL_PROCESSOR_DISABLE__
+    // release schedule timeout if set
+    action_release(&_this->timed_schedule);
+#endif
 
 #ifdef __RESOURCE_MANAGEMENT_ENABLE__
     // release all resources that belong to current process
@@ -15,7 +20,7 @@ static dispose_function_t _process_release(Process_control_block_t *_this) {
         Disposable_t *resource = _this->_resource_list;
 
         // child process disposal (no matter whether _this process terminated or was killed) - proper kill to stay consistent
-        if (resource->_dispose_hook == _process_release) {
+        if (resource->_dispose_hook == (dispose_function_t) _process_dispose) {
             process_kill(process(resource));
         }
 
@@ -26,7 +31,7 @@ static dispose_function_t _process_release(Process_control_block_t *_this) {
     // disable priority inheritance from on_exit_action_queue
     action_queue_on_head_priority_changed(&_this->on_exit_action_queue) = NULL;
     // trigger all dispose actions registered on current process
-    action_queue_close(&_this->on_exit_action_queue, _this->_exit_code);
+    action_queue_close(&_this->on_exit_action_queue, process_exit_code(_this));
 
     interrupt_suspend();
 
@@ -72,37 +77,55 @@ void process_register(Process_control_block_t *process, Process_create_config_t 
 
     // prepare general schedule action on wakeup from blocking states
     zerofill(&process->_triggerable);
-    zerofill(process_get_schedule_config(process));
-    process_get_schedule_config(process)->priority = create_config->priority;
+    process_schedule_config(process)->priority = create_config->priority;
+    sorted_set_item_priority(process) = create_config->priority;
     action_owner(process) = process;
 
     // reset process state
-    process->_exit_code = PROCESS_SIGNAL_EXIT;
-    process->_local = NULL;
-    process->_waiting = false;
-    process->recursion_guard = false;
+    process_exit_code(process) = PROCESS_SIGNAL_EXIT;
+    process_local(process) = NULL;
+    process_waiting(process) = false;
+    process_suspended(process) = true;
 
     // reset action queues, inherit their priority
     action_queue_create(&process->on_exit_action_queue, true, true, process, schedulable_state_reset);
     action_queue_create(&process->pending_signal_queue, true, true, process, schedulable_state_reset);
 
-    __dispose_hook_register(process, _process_release);
+#ifndef __SIGNAL_PROCESSOR_DISABLE__
+    interrupt_suspend();
+
+    Process_control_block_t *running_process_bak = running_process;
+
+    // make current process owner of newly allocated resources if resource management is enabled
+    running_process = process;
+
+    // initialize timed signal for sleep / blocking wait with timeout
+    timed_signal_create(&process->timed_schedule, schedule_handler, false, process_schedule_config(process));
+    // timed_schedule owner - first argument to schedule_handler()
+    action_owner(&process->timed_schedule) = process;
+
+    running_process = running_process_bak;
+
+    interrupt_restore();
+#endif
+
+    __dispose_hook_register(process, _process_dispose);
 
     // make process schedulable on trigger
-    action(process)->trigger = (action_trigger_t) schedule_trigger;
+    action(process)->trigger = (action_trigger_t) schedule_handler;
 }
 
 void process_exit(signal_t exit_code) {
 
     // store exit code to be passed to exit hook and actions in dispose action queue
-    running_process->_exit_code = exit_code;
+    process_exit_code(running_process) = exit_code;
     // end process, release all related resources
     dispose(running_process);
 }
 
 // -------------------------------------------------------------------------------------
 
-signal_t process_wait(Process_control_block_t *process, Schedule_config_t *with_config) {
+signal_t process_wait_for(Process_control_block_t *process, Time_unit_t *timeout, Schedule_config_t *with_config) {
 
     // sanity check
     if (process == running_process) {
@@ -110,15 +133,15 @@ signal_t process_wait(Process_control_block_t *process, Schedule_config_t *with_
     }
 
     interrupt_suspend();
-    // suspend running process if target is alive, apply given config
-    suspend(process_is_alive(process), with_config, PROCESS_SIGNAL_EXIT, &process->on_exit_action_queue);
+    // suspend running process if  given process is alive, apply given config
+    suspend(process_is_alive(process) ? PROCESS_WAIT_TIMEOUT : PROCESS_SIGNAL_EXIT, &process->on_exit_action_queue, timeout, with_config);
 
     interrupt_restore();
 
     return running_process->blocked_state_signal;
 }
 
-bool process_register_exit_action(Process_control_block_t *process, Action_t *action) {
+bool process_wait_for_async(Process_control_block_t *process, Action_t *action) {
     bool process_alive;
 
     interrupt_suspend();
@@ -138,5 +161,5 @@ void process_kill(Process_control_block_t *process) {
     // end process, release all related resources
     dispose(process);
     // process might be already executing dispose on itself with lower priority
-    process_wait(process, process_get_schedule_config(running_process));
+    process_wait_for(process, NULL, process_schedule_config(running_process));
 }

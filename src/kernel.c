@@ -2,12 +2,15 @@
 // Copyright (c) 2018-2019 Mutant Industries ltd.
 #include <kernel.h>
 #include <driver/interrupt.h>
+#include <action/signal.h>
 #include <event.h>
 #include <process.h>
 
 
+// -------------------------------------------------------------------------------------
+
 signal_t kernel_start(Process_control_block_t *init_process, priority_t init_process_priority, void (*sys_init)(void), bool wakeup,
-             Context_switch_handle_t *context_switch_handle, Timer_channel_handle_us_convertible_t *timing_handle) {
+             Context_switch_handle_t *context_switch_handle, Timing_handle_t *timing_handle) {
 
     signal_t module_init_result;
 
@@ -32,12 +35,16 @@ signal_t kernel_start(Process_control_block_t *init_process, priority_t init_pro
     // init process will become owner of all resources registered
     running_process = init_process;
 
-#ifndef __EVENT_PROCESSOR_DISABLE__
-    event_processor_init();
+#ifndef __SIGNAL_PROCESSOR_DISABLE__
+    signal_processor_init();
+
+    if (timing_handle && (module_init_result = timing_reinit(timing_handle, &signal_processor, ! wakeup))) {
+        return module_init_result;
+    }
 #endif
 
+    // execute user initialization
     if ( ! wakeup) {
-        // execute user initialization
         (*sys_init)();
     }
 

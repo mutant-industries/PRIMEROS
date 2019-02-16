@@ -35,6 +35,9 @@
     subscription_register(subscription(_subscription), ((signal_handler_t) (_on_publish)), _owner, _persistent, ((signal_interceptor_t) (_interceptor)), _with_config)
 //</editor-fold>
 
+// getter, setter
+#define subscription_on_publish_signal(_subscription) (&(subscription(_subscription)->_on_publish))
+
 // -------------------------------------------------------------------------------------
 
 /**
@@ -52,12 +55,12 @@ typedef struct Subscription {
  * Initialize subscription
  *  - subscription is custom handler ('on_publish') executed when triggered within context of process that created it
  *  - two arguments are passed to handler: 'owner' and signal the subscription was triggered with
- *  - subscription is nothing but proxy to signal action therefore process must be in waiting state to execute subscription handlers
+ *  - subscription is nothing but proxy to signal action therefore process must be in waiting state to execute subscription handler
  *  - subscription has optional signal interceptor, that can be used to filter or aggregate signals, typical usage:
  *    - subscription is triggered by multiple sources where each source is identified by specific signal and process
  * wants to execute handler when all sources are triggered (waiting for multiple events)
- *    - subscription is subscribed to specific event, that is triggered by multiple sources identified by specific signal,
- * process wants to execute handler when specific signal comes and wants to filter out others
+ *    - subscription is triggered by multiple sources identified by specific signal, process wants to execute handler
+ * when specific signal comes and wants to filter out others
  *    - process wants to keep track of how many times was specific subscription triggered - subscription itself
  * has no signal buffer and can be triggered faster that process can handle it
  *    -> interceptor is executed within context where subscription is triggered, not within owner process

@@ -18,7 +18,8 @@ add_library(PrimerOS
         src/sync/semaphore.c
         src/sync/mutex.c
         src/event.c
-        src/subscription.c)
+        src/subscription.c
+        src/time.c)
 
 target_include_directories(PrimerOS
         PUBLIC $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include> $<INSTALL_INTERFACE:include>

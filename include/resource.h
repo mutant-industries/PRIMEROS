@@ -57,7 +57,10 @@ extern signal_t unsupported_after_disposed(void);
  *  - assume both are the same size or source is attribute of destination starting at offset 0
  */
 #define bytecopy(source, destination) \
-    if ( ! (source)) { \
+    if ((source) == (destination)) { \
+        /* nothing to be done */ \
+    } \
+    else if ( ! (source)) { \
         __do_zerofill((void *) (destination), sizeof(*(source))); \
     } \
     else { \

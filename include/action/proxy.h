@@ -37,7 +37,7 @@
 // -------------------------------------------------------------------------------------
 
 /**
- * Generic signal interceptor interface (handler interface subtype)
+ * Generic signal interceptor interface (action handler interface subtype)
  *  - return false to ignore signal
  */
 typedef bool (*signal_interceptor_t)(void *owner, signal_t *signal);

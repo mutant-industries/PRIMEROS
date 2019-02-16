@@ -4,7 +4,7 @@
 #include <stddef.h>
 
 
-#define _intercept(_proxy, _signal) action_proxy_signal_interceptor(_proxy)(action_owner(_proxy), &(_signal))
+#define _intercept(_proxy, _signal_ptr) action_proxy_signal_interceptor(_proxy)(action_owner(_proxy), _signal_ptr)
 
 // -------------------------------------------------------------------------------------
 
@@ -23,7 +23,7 @@ void action_proxy_register(Action_proxy_t *proxy, dispose_function_t dispose_hoo
 void proxy_trigger(Action_proxy_t *_this, signal_t signal) {
 
     // execute signal interceptor if set
-    if (action_proxy_signal_interceptor(_this) && ! _intercept(_this, signal)) {
+    if (action_proxy_signal_interceptor(_this) && ! _intercept(_this, &signal)) {
         return;
     }
 
@@ -35,4 +35,3 @@ void proxy_trigger(Action_proxy_t *_this, signal_t signal) {
         action_release(_this);
     }
 }
-

@@ -51,7 +51,6 @@ Sorted_set_item_t *sorted_set_poll_last(Sorted_set_item_t **set) {
 
 bool sorted_set_item_set_priority(Sorted_set_item_t *item, priority_t priority) {
     Sorted_set_item_t *head, *tail, *current;
-    bool highest_priority_placement;
 
     if ( ! deque_item_container(item)) {
         // item in not in any deque, just set new priority
@@ -108,7 +107,6 @@ bool sorted_set_item_set_priority(Sorted_set_item_t *item, priority_t priority) 
 
     item->_priority = priority;
 
-    highest_priority_placement = (item == sorted_set_item(*deque_item_container(item)));
-
-    return highest_priority_placement;
+    // return true if highest priority item
+    return item == sorted_set_item(*deque_item_container(item));
 }

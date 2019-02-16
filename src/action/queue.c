@@ -14,8 +14,8 @@
 static Action_t *_pop_unsafe(Action_queue_t *_this) {
     Action_t *head = action(sorted_set_poll_last(sorted_set(_this)));
 
-    if (_this->_on_action_released && head) {
-        _this->_on_action_released(_this->_owner, head, _this);
+    if (head && action_on_released(head)) {
+        action_released_callback(head, _this);
     }
 
     return head;
@@ -75,8 +75,8 @@ static void _release(Action_t *action) {
 
     deque_item_remove(deque_item(action));
 
-    if (queue->_on_action_released) {
-        queue->_on_action_released(queue->_owner, action, queue);
+    if (action_on_released(action)) {
+        action_released_callback(action, queue);
     }
 }
 
@@ -89,8 +89,8 @@ static void _release_sorted(Action_t *action) {
 
     deque_item_remove(deque_item(action));
 
-    if (queue->_on_action_released) {
-        queue->_on_action_released(queue->_owner, action, queue);
+    if (action_on_released(action)) {
+        action_released_callback(action, queue);
     }
 
     // removed last action from queue, head priority changed
@@ -281,11 +281,10 @@ static void _close(Action_queue_t *_this, signal_t signal) {
 
 // Action_queue_t constructor
 void action_queue_init(Action_queue_t *queue, bool sorted, bool strict_sorting, void *owner,
-        head_priority_changed_hook_t on_head_priority_changed, action_released_hook_t on_released) {
+        head_priority_changed_hook_t on_head_priority_changed) {
 
     queue->_head = NULL;
     queue->_owner = owner;
-    queue->_on_action_released = on_released;
     queue->_on_head_priority_changed = on_head_priority_changed;
 
     // state
