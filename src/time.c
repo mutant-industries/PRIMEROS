@@ -4,6 +4,7 @@
 #include <driver/interrupt.h>
 #include <action.h>
 #include <action/queue.h>
+#include <compiler.h>
 #include <process.h>
 
 
@@ -19,14 +20,14 @@
 static Timing_handle_t *_timing_handle;
 
 // timed signal queue, sorted by priority desc, _unsorted_queue_handler inherits it's priority
-static Action_queue_t _unsorted_signal_queue;
+__persistent static Action_queue_t _unsorted_signal_queue = {0};
 // timed signal, sorted by _trigger_time in ascending order
-static Action_queue_t _upcoming_signal_queue;
+__persistent static Action_queue_t _upcoming_signal_queue = {0};
 
 // signal triggered when new timed signal schedule request is created
-static Action_signal_t _unsorted_queue_handler;
+__persistent static Action_signal_t _unsorted_queue_handler = {0};
 // signal triggered when (one or more) upcoming signal(s) should be triggered
-static Action_signal_t _upcoming_queue_handler;
+__persistent static Action_signal_t _upcoming_queue_handler = {0};
 
 // absolute time that corresponds to _timing_handle->_timer_counter_last_stable
 static Time_unit_t _current_time_last_stable;
@@ -551,7 +552,7 @@ void timed_signal_register(Timed_signal_t *signal, signal_handler_t handler, boo
 
 // -------------------------------------------------------------------------------------
 
-signal_t timing_reinit(Timing_handle_t *handle, Process_control_block_t *timing_queue_processor, bool reset_state) {
+signal_t timing_reinit(Timing_handle_t *handle, Process_control_block_t *timing_queue_processor, bool persistent_state_reset) {
 
     // sanity check
     if ( ! handle) {
@@ -568,15 +569,12 @@ signal_t timing_reinit(Timing_handle_t *handle, Process_control_block_t *timing_
         return TIMING_HANDLE_UNSUPPORTED;
     }
 
-    if (_timing_handle && reset_state) {
+    if (_timing_handle && persistent_state_reset) {
         timer_channel_stop(_timing_handle);
     }
 
     // first time initialization / reset
-    if ( ! _timing_handle || reset_state) {
-        // release both handlers in case of state reset
-        action_release(&_unsorted_queue_handler);
-        action_release(&_upcoming_queue_handler);
+    if (persistent_state_reset) {
         // unsorted queue handler
         action_signal_create(&_unsorted_queue_handler, NULL, _unsorted_queue_handle, NULL, timing_queue_processor);
         // priority of unsorted queue handler is inherited only from unsorted queue head (not from actual running process)
@@ -628,16 +626,16 @@ signal_t timing_reinit(Timing_handle_t *handle, Process_control_block_t *timing_
 
         // actual maximum of _timer_overflow_us_increment larger than absolute maximum
         if (handle->_timer_overflow_ticks_increment > (timer_overflow_ticks_max = handle->usecs_to_ticks(HOUR_MICROSECONDS))) {
-            // this point should not be reached since the absolute error of ...
+            // HOUR_MICROSECONDS is divisible by 5^8, 3^2 and 2^10, therefore the conversion error should not be too bad
             handle->_timer_overflow_ticks_increment = timer_overflow_ticks_max;
-
+            // ... and the absolute error is added to current time just once per hour
             handle->_timer_overflow_us_increment = HOUR_MICROSECONDS;
         }
     }
 
     interrupt_suspend();
 
-    // timer read-write minimal ticks threshold (worst case) setup
+    // timer counter read-write minimal ticks threshold (worst case) setup
     // - it takes some time to read timer counter, compute next compare value and write that value to compare register
     // - the compare register must be always set to 'future' value
     // - minimal threshold defines minimal compare value increment of compare register and is defined by number of
@@ -667,7 +665,7 @@ signal_t timing_reinit(Timing_handle_t *handle, Process_control_block_t *timing_
         handle->_timer_compare_value_set_threshold = 1;
     }
 
-    if ( ! reset_state && _timing_handle && timer_channel_is_active(_timing_handle)) {
+    if ( ! persistent_state_reset && _timing_handle && timer_channel_is_active(_timing_handle)) {
         // start new handle...
         timer_channel_start(handle);
         // ...and store it's counter content

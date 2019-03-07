@@ -10,9 +10,22 @@
 
 #include <stdbool.h>
 #include <defs.h>
+#include <event.h>
 #include <scheduler.h>
 #include <time.h>
 
+
+/**
+ * System wakeup event triggered when kernel started with 'wakeup' set
+ *  - any persistent process can subscribe (e.g. to reinitialize drivers) after system restart
+ *  - use only when process control structures are stored in some non-volatile memory such as FRAM
+ */
+extern Event_t wakeup_event;
+
+/**
+ * Signal the wakeup event is triggered with on system wakeup
+ */
+#define SYSTEM_WAKEUP_SIGNAL    KERNEL_API_SUCCESS
 
 /**
  * PrimerOS kernel entry point

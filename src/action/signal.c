@@ -3,6 +3,7 @@
 #include <action/signal.h>
 #include <action/queue.h>
 #include <driver/interrupt.h>
+#include <compiler.h>
 #include <process.h>
 
 
@@ -112,12 +113,12 @@ bool signal_set_priority(Action_signal_t *signal, priority_t priority_lowest) {
 #ifndef __SIGNAL_PROCESSOR_DISABLE__
 
 #ifndef __SIGNAL_PROCESSOR_STACK_SIZE__
-#define __SIGNAL_PROCESSOR_STACK_SIZE__        ((uint16_t) (0xFF))
+#define __SIGNAL_PROCESSOR_STACK_SIZE__        ((uint16_t) (0xFE))
 #endif
 
-Process_control_block_t signal_processor;
+__persistent Process_control_block_t signal_processor = {0};
 
-static uint8_t _signal_processor_stack[__SIGNAL_PROCESSOR_STACK_SIZE__];
+__persistent static uint8_t _signal_processor_stack[__SIGNAL_PROCESSOR_STACK_SIZE__] = {0};
 
 void signal_processor_init() {
 

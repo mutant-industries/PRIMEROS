@@ -58,6 +58,7 @@
 #define timed_signal_trigger_time(_signal) (&(timed_signal(_signal)->_trigger_time))
 #define timed_signal_delay(_signal) (&(timed_signal(_signal)->delay))
 #define timed_signal_is_periodic(_signal) (timed_signal(_signal)->_periodic)
+#define timed_signal_trigger_count(_signal) action_signal_unhandled_trigger_count(_signal)
 
 #define timed_signal_set_delay_from(_signal, hrs, secs, millisecs, usecs) time_unit_from(timed_signal_delay(_signal), hrs, secs, millisecs, usecs)
 // (signal, usecs) -> signal.delay, (signal, secs, usecs) -> signal.delay
@@ -216,9 +217,11 @@ typedef struct Timing_handle {
 /**
  * Reinitialize timing subsystem
  *  - timing_queue_processor - process the context of which shall be used as default context to handle timed signal queue
+ *  - if resource management is enabled then persistent state can be reset no more that once after system start
+ *  - current time is not persistent and setting time to specific value is not supported
  *  - can also be called anytime while system is running to change the handle
  */
-signal_t timing_reinit(Timing_handle_t *handle, Process_control_block_t *timing_queue_processor, bool reset_state);
+signal_t timing_reinit(Timing_handle_t *handle, Process_control_block_t *timing_queue_processor, bool persistent_state_reset);
 
 
 #endif /* _SYS_TIME_H_ */

@@ -113,7 +113,7 @@ void context_switch_trigger(void);
  * Set context switch handle during system start and initialize processing environment
  *  - can also be called anytime while system is running to change the handle
  */
-signal_t scheduler_reinit(Context_switch_handle_t *handle, bool reset_state);
+signal_t scheduler_reinit(Context_switch_handle_t *handle, bool persistent_state_reset);
 
 
 #endif /* _SYS_SCHEDULER_H_ */

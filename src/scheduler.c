@@ -14,7 +14,7 @@
 Process_control_block_t *running_process;
 
 static Context_switch_handle_t *_context_switch_handle;
-static Action_queue_t _runnable_queue;
+__persistent static Action_queue_t _runnable_queue = {0};
 
 // -------------------------------------------------------------------------------------
 
@@ -127,7 +127,7 @@ signal_t wait(Time_unit_t *timeout, Schedule_config_t *with_config) {
         // just peek, no pop - process still needs to inherit priority of signal during it's execution
         if ((signal = action_signal(action_queue_head(&running_process->pending_signal_queue)))) {
             // execute action handler, process waiting state depends on handler return value
-            process_waiting(running_process) &= action(signal)->handler(action_owner(signal), action_signal_input(signal));
+            process_waiting(running_process) = action(signal)->handler(action_owner(signal), action_signal_input(signal));
 
             interrupt_suspend();
 
@@ -221,7 +221,17 @@ inline void context_switch_trigger() {
 __naked __interrupt void _context_switch() {
 
     stack_save_context(&running_process->_stack_pointer);
+
     running_process = process(action_queue_head(&_runnable_queue));
+
+    if (running_process->_pre_schedule_hook) {
+        running_process->_pre_schedule_hook(running_process);
+    }
+
+#ifdef __CONTEXT_SWITCH_HANDLE_CLEAR_IFG__
+    vector_clear_interrupt_flag(_context_switch_handle);
+#endif
+
     stack_restore_context(&running_process->_stack_pointer);
 
     reti;
@@ -229,7 +239,7 @@ __naked __interrupt void _context_switch() {
 
 // -------------------------------------------------------------------------------------
 
-signal_t scheduler_reinit(Context_switch_handle_t *handle, bool reset_state) {
+signal_t scheduler_reinit(Context_switch_handle_t *handle, bool persistent_state_reset) {
 
     // sanity check
     if ( ! handle) {
@@ -245,8 +255,7 @@ signal_t scheduler_reinit(Context_switch_handle_t *handle, bool reset_state) {
 
     interrupt_suspend();
 
-    // first time initialization / reset
-    if ( ! _context_switch_handle && reset_state) {
+    if (persistent_state_reset) {
         // create runnable queue sorted by priority
         action_queue_create(&_runnable_queue, true);
     }

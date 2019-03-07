@@ -21,12 +21,20 @@
 //#define __SIGNAL_PROCESSOR_DISABLE__
 
 /**
+ * Allocate memory for event triggered on system wakeup (when kernel_start 'wakeup' parameter is set)
+ *  - makes sense only on devices with some non-volatile memory such as FRAM
+ *  - subscriptions to wakeup event can be used to reinitialize drivers after system start
+ *  - if used then all such subscriptions must be allocated to non-volatile memory
+ */
+//#define __WAKEUP_EVENT_ENABLE__
+
+/**
  * stack size of signal default execution context - set according to what type of actions are going to be subscribed to events,
- * the default value [0xFF] is just estimated worst case for development environment
+ * the default value [0xFE] is just estimated worst case for development environment
  *  - the absolute minimum depends on memory model used, plus always consider reserved space for interrupt servicing
  *  - please also consider that compiler optimization level affects minimum stack size
  */
-//#define __SIGNAL_PROCESSOR_STACK_SIZE__        ((uint16_t) (0xFF))
+//#define __SIGNAL_PROCESSOR_STACK_SIZE__        ((uint16_t) (0xFE))
 
 /**
  * to convert seconds or milliseconds to microseconds, the multiplication by 1000 is required, {@see time_unit_from()},
@@ -40,6 +48,12 @@
  * priority with which timed signals shall be triggered, default [0xFF00]
  */
 //#define __TIMING_QUEUE_HANDLER_PRIORITY__     ((uint16_t) (0xFF00))
+
+/**
+ * clear interrupt flag on context switch handle inside interrupt service
+ *  - must be defined if interrupt flag is not cleared automatically by hardware
+ */
+//#define __CONTEXT_SWITCH_HANDLE_CLEAR_IFG__
 
 // -------------------------------------------------------------------------------------
 

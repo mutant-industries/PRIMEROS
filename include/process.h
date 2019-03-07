@@ -50,6 +50,8 @@
 #define process_exit_code(_process) (_process)->_exit_code
 #define process_local(_process) (_process)->_local
 #define process_current_local() process_local(running_process)
+#define process_pre_schedule_hook(_process) (_process)->_pre_schedule_hook
+#define process_current_pre_schedule_hook() process_pre_schedule_hook(running_process)
 
 /**
  * Process API return codes
@@ -138,6 +140,8 @@ struct Process_control_block {
     bool _suspended;
     // execution state blocked waiting for signal(s)
     bool _waiting;
+    // hook triggered before context switched to this process
+    void (*_pre_schedule_hook)(Process_control_block_t *);
     // return value passing from blocking states
     signal_t blocked_state_signal;
     // process initialization parameters, allows process restart

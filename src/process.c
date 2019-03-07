@@ -86,6 +86,7 @@ void process_register(Process_control_block_t *process, Process_create_config_t 
     process_local(process) = NULL;
     process_waiting(process) = false;
     process_suspended(process) = true;
+    process_pre_schedule_hook(process) = NULL;
 
     // reset action queues, inherit their priority
     action_queue_create(&process->on_exit_action_queue, true, true, process, schedulable_state_reset);
