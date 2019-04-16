@@ -33,6 +33,7 @@
 
 // getter, setter
 #define action_proxy_signal_interceptor(_proxy) action_handler(_proxy)
+#define action_proxy_target(_proxy) action_proxy(_proxy)->_target
 
 // -------------------------------------------------------------------------------------
 
@@ -67,7 +68,7 @@ void action_proxy_register(Action_proxy_t *proxy, dispose_function_t dispose_hoo
  *  - trigger linked action
  *  - remove itself from queue it is (possibly) linked to if not persistent
  */
-void proxy_trigger(Action_proxy_t *_this, signal_t signal);
+void action_proxy_trigger(Action_proxy_t *_this, signal_t signal);
 
 
 #endif /* _SYS_ACTION_PROXY_H_ */

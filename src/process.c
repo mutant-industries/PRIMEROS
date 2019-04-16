@@ -4,7 +4,9 @@
 #include <stddef.h>
 #include <driver/interrupt.h>
 #include <driver/stack.h>
-
+#ifdef __PROCESS_LOCAL_WDT_CONFIG__
+#include <driver/wdt.h>
+#endif
 
 // Process_control_block_t destructor
 static dispose_function_t _process_dispose(Process_control_block_t *_this) {
@@ -30,6 +32,12 @@ static dispose_function_t _process_dispose(Process_control_block_t *_this) {
 
     // disable priority inheritance from on_exit_action_queue
     action_queue_on_head_priority_changed(&_this->on_exit_action_queue) = NULL;
+
+    // on process exit always trigger all dispose actions without interruption
+    if (_this == running_process) {
+        action_set_priority(_this, PRIORITY_RESET);
+    }
+
     // trigger all dispose actions registered on current process
     action_queue_close(&_this->on_exit_action_queue, process_exit_code(_this));
 
@@ -87,6 +95,7 @@ void process_register(Process_control_block_t *process, Process_create_config_t 
     process_waiting(process) = false;
     process_suspended(process) = true;
     process_pre_schedule_hook(process) = NULL;
+    process_post_suspend_hook(process) = NULL;
 
     // reset action queues, inherit their priority
     action_queue_create(&process->on_exit_action_queue, true, true, process, schedulable_state_reset);
@@ -108,6 +117,11 @@ void process_register(Process_control_block_t *process, Process_create_config_t 
     running_process = running_process_bak;
 
     interrupt_restore();
+#endif
+
+#ifdef __PROCESS_LOCAL_WDT_CONFIG__
+    // inherit WDT state from current WDT configuration
+    WDT_backup_to(&process->_WDT_state);
 #endif
 
     __dispose_hook_register(process, _process_dispose);

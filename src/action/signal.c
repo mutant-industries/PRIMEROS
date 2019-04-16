@@ -5,6 +5,9 @@
 #include <driver/interrupt.h>
 #include <compiler.h>
 #include <process.h>
+#if defined(__SIGNAL_PROCESSOR_WDT_INTERVAL__) && defined(__PROCESS_LOCAL_WDT_CONFIG__)
+#include <driver/wdt.h>
+#endif
 
 
 static void _on_signal_released(Action_signal_t *_this, Action_queue_t *origin) {
@@ -40,6 +43,8 @@ void action_signal_register(Action_signal_t *signal, dispose_function_t dispose_
     action_create(signal, dispose_hook, signal_trigger, handler);
     // set context within which shall signal be processed
     action_signal_execution_context(signal) = context;
+    // by default execution context does not keep it's priority during signal handler
+    action_signal_keep_priority_while_handled(signal) = false;
     // set default owner
     action_owner(signal) = signal;
     // reset trigger count
@@ -120,6 +125,19 @@ __persistent Process_control_block_t signal_processor = {0};
 
 __persistent static uint8_t _signal_processor_stack[__SIGNAL_PROCESSOR_STACK_SIZE__] = {0};
 
+static void _signal_processor_entry_point() {
+
+#if defined(__SIGNAL_PROCESSOR_WDT_INTERVAL__) && defined(__PROCESS_LOCAL_WDT_CONFIG__)
+    // start WDT with specified interval
+    WDT_clr_interval(__SIGNAL_PROCESSOR_WDT_INTERVAL__);
+#endif
+
+    // do nothing but handle signals
+    while (true) {
+        signal_wait();
+    }
+}
+
 void signal_processor_init() {
 
     // signal processor inherits priority of pending signals
@@ -129,7 +147,7 @@ void signal_processor_init() {
     // null args passed to wait()
     signal_processor.create_config.arg_1 = NULL;
     signal_processor.create_config.arg_2 = NULL;
-    signal_processor.create_config.entry_point = (process_entry_point_t) wait;
+    signal_processor.create_config.entry_point = (process_entry_point_t) _signal_processor_entry_point;
 
     // create event processor
     process_create(&signal_processor);

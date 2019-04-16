@@ -38,6 +38,7 @@
 #define action_signal_input(_signal) action_attr(_signal, action_signal_input_attr)
 #define action_signal_unhandled_trigger_count(_signal) action_signal(_signal)->_unhandled_trigger_count
 #define action_signal_execution_context(_signal) action_signal(_signal)->_execution_context
+#define action_signal_keep_priority_while_handled(_signal) action_signal(_signal)->_keep_priority_while_handled
 #define action_signal_schedule_config(_signal) (&(action_signal(_signal)->_schedule_config))
 #define action_signal_on_handled(_signal) action_signal(_signal)->on_handled
 
@@ -57,6 +58,9 @@ struct Action_signal {
     uint16_t _unhandled_trigger_count;
     // linked execution context
     Process_control_block_t *_execution_context;
+    // if priority of signal changes while handled or signal removes itself from pending queue while handled,
+    // then priority of execution context shall not drop below priority of signal it had before handler was called
+    bool _keep_priority_while_handled;
     // general-purpose schedule config
     Schedule_config_t _schedule_config;
     // triggered after action handler is executed (interrupts are disabled during execution)

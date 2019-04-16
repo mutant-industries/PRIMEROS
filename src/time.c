@@ -298,8 +298,11 @@ static bool _check_upcoming_signal_queue(bool trigger_upcoming_queue_handler) {
         }
 
         // see if upcoming signal fits to next CCR increment - if so try to set timer compare value
-        if (upcoming_signal_in_usecs <= _timing_handle->_timer_overflow_us_increment
-                && ! _timer_increment_compare_value(_timing_handle, _timing_handle->usecs_to_ticks(upcoming_signal_in_usecs))) {
+        if (upcoming_signal_in_usecs <= _timing_handle->_timer_overflow_us_increment) {
+            // if upcoming event too close
+            if (_timer_increment_compare_value(_timing_handle, _timing_handle->usecs_to_ticks(upcoming_signal_in_usecs))) {
+                return false;
+            }
 
             if (trigger_upcoming_queue_handler) {
                 action_trigger(&_upcoming_queue_handler, NULL);
@@ -307,6 +310,14 @@ static bool _check_upcoming_signal_queue(bool trigger_upcoming_queue_handler) {
 
             return true;    // upcoming event is too close, timer was set to next stable value
         }
+    }
+
+    uint32_t timer_next_stable_value = (_timing_handle->_timer_counter_last_stable
+            + _timing_handle->_timer_overflow_ticks_increment) & _timing_handle->_timer_counter_mask;
+
+    if (timer_channel_get_compare_value(_timing_handle) != timer_next_stable_value) {
+        // just keep time tracking running
+        _timer_increment_compare_value(_timing_handle, _timing_handle->_timer_overflow_ticks_increment);
     }
 
     return false;   // no more upcoming signals to be processed
@@ -537,6 +548,8 @@ void timed_signal_register(Timed_signal_t *signal, signal_handler_t handler, boo
 
     // parent constructor
     action_signal_create(signal, (dispose_function_t) _timed_signal_dispose, handler, with_config, context);
+    // keep signal priority if rescheduled / canceled within handler
+    action_signal_keep_priority_while_handled(signal) = true;
     // set default on_handled hook
     action_signal_on_handled(signal) = (bool (*)(Action_signal_t *)) _on_timed_signal_handled;
     // set default on_released hook to ensure _track_time_request_cnt is consistent

@@ -144,8 +144,6 @@ struct Timed_signal {
 *  - periodic signal has constant (preset) delay between triggers no matter what current overhead of timing or scheduler is
 *    - it is automatically rescheduled after handled, next trigger time = last trigger time + delay
 *  - the public API of timed signal (release, schedule, set periodic) can be used anytime, even from handler itself
-*    - please note, that if signal is released / rescheduled within signal handler then it is removed from pending_signals
-*  on process within which handler is executed ('context') which might result in priority decrease of actual 'context'
 *  - signal handler receives two parameters - signal owner (signal itself by default) and TIMING_SIGNAL_TIMEOUT
 *  - timed signal can be seen as standard action and used that way, e.g. it can be triggered from multiple sources
  * where each source is identified by specific signal (parameter), nut just by timing subsystem (TIMING_SIGNAL_TIMEOUT),

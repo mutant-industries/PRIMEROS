@@ -37,6 +37,26 @@
 //#define __SIGNAL_PROCESSOR_STACK_SIZE__        ((uint16_t) (0xFE))
 
 /**
+ * restore WDT configuration on context switch
+ *  - WDT state is stored on process control block
+ *  - process is started with WDT configuration active during process creation
+ *  - WDT is cleared on every context switch
+ */
+//#define __PROCESS_LOCAL_WDT_CONFIG__
+
+/**
+ * clear WDT after signal handler was executed
+ */
+//#define __SIGNAL_CLEAR_WDT_ON_HANDLED__
+
+/**
+ * start WDT for specified interval after signal processor is started
+ *  - {@see WDT_clr_interval()} of used driverlib for options
+ *  - __PROCESS_LOCAL_WDT_CONFIG__ must be defined to enable process-local WDT state
+ */
+//#define __SIGNAL_PROCESSOR_WDT_INTERVAL__         512K
+
+/**
  * to convert seconds or milliseconds to microseconds, the multiplication by 1000 is required, {@see time_unit_from()},
  * and there might be no 'mul' instruction or no external HW multiplier
  *  - the default multiplication by 1000 using bit shifts is only optimized for 16-bit instructions

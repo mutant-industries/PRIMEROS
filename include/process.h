@@ -52,6 +52,8 @@
 #define process_current_local() process_local(running_process)
 #define process_pre_schedule_hook(_process) (_process)->_pre_schedule_hook
 #define process_current_pre_schedule_hook() process_pre_schedule_hook(running_process)
+#define process_post_suspend_hook(_process) (_process)->_post_suspend_hook
+#define process_current_post_suspend_hook() process_post_suspend_hook(running_process)
 
 /**
  * Process API return codes
@@ -100,6 +102,13 @@
 typedef signal_t (*process_entry_point_t)(signal_t arg_1, signal_t arg_2);
 
 /**
+ * Scheduler hook signature
+ *  - can be registered on context switched to / from process
+ *  - executed within interrupt service
+ */
+typedef void (*process_schedule_hook_t)(Process_control_block_t *);
+
+/**
  * Process init configuration
  */
 typedef struct Process_create_config {
@@ -141,7 +150,13 @@ struct Process_control_block {
     // execution state blocked waiting for signal(s)
     bool _waiting;
     // hook triggered before context switched to this process
-    void (*_pre_schedule_hook)(Process_control_block_t *);
+    process_schedule_hook_t _pre_schedule_hook;
+    // hook triggered after process is suspended
+    process_schedule_hook_t _post_suspend_hook;
+#ifdef __PROCESS_LOCAL_WDT_CONFIG__
+    // watchdog configuration for this process
+    uint16_t _WDT_state;
+#endif
     // return value passing from blocking states
     signal_t blocked_state_signal;
     // process initialization parameters, allows process restart
@@ -156,7 +171,6 @@ struct Process_control_block {
     // signal used to wakeup process from blocking states (blocking wait with timeout)
     Timed_signal_t timed_schedule;
 #endif
-
 };
 
 // -------------------------------------------------------------------------------------

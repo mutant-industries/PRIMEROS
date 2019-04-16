@@ -25,6 +25,7 @@
 #define event_subscribe(_event, _action) event(_event)->subscribe(event(_event), action(_action))
 #define event_wait(...) _EVENT_WAIT_GET_MACRO(__VA_ARGS__, _event_wait_3, _event_wait_2, _event_wait_1)(__VA_ARGS__)
 #define event_trigger(_event, _signal) action_trigger(_event, _signal)
+#define event_trigger_sync(_event, _signal) action_queue_trigger_all(&(_event)->_subscription_list, _signal)
 
 //<editor-fold desc="variable-args - event_create()">
 #define _EVENT_CREATE_GET_MACRO(_1,_2,_3,NAME,...) NAME

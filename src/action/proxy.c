@@ -12,7 +12,7 @@
 void action_proxy_register(Action_proxy_t *proxy, dispose_function_t dispose_hook,
         Action_t *target, bool persistent, signal_interceptor_t interceptor) {
 
-    action_create(proxy, dispose_hook, proxy_trigger, interceptor);
+    action_create(proxy, dispose_hook, action_proxy_trigger, interceptor);
 
     proxy->_target = target;
     proxy->_persistent = persistent;
@@ -20,7 +20,8 @@ void action_proxy_register(Action_proxy_t *proxy, dispose_function_t dispose_hoo
 
 // -------------------------------------------------------------------------------------
 
-void proxy_trigger(Action_proxy_t *_this, signal_t signal) {
+void action_proxy_trigger(Action_proxy_t *_this, signal_t signal) {
+    Action_t *target;
 
     // execute signal interceptor if set
     if (action_proxy_signal_interceptor(_this) && ! _intercept(_this, &signal)) {
@@ -28,7 +29,9 @@ void proxy_trigger(Action_proxy_t *_this, signal_t signal) {
     }
 
     // just proxy trigger to target action
-    action_trigger(_this->_target, signal);
+    if (target = _this->_target) {
+        action_trigger(target, signal);
+    }
 
     // if not persistent, proxy shall be triggered just once
     if ( ! _this->_persistent) {

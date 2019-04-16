@@ -9,7 +9,9 @@
 #include <action/signal.h>
 #include <compiler.h>
 #include <process.h>
-
+#if defined(__PROCESS_LOCAL_WDT_CONFIG__) || defined(__SIGNAL_CLEAR_WDT_ON_HANDLED__)
+#include <driver/wdt.h>
+#endif
 
 Process_control_block_t *running_process;
 
@@ -111,6 +113,14 @@ void schedulable_state_reset(Process_control_block_t *process, priority_t priori
 }
 
 signal_t wait(Time_unit_t *timeout, Schedule_config_t *with_config) {
+    Time_unit_t wait_timeout;
+
+    if (timeout) {
+        // store timeout so that source structure can be modified within signal handlers
+        time_unit_copy(timeout, &wait_timeout);
+        // pass local copy to suspend
+        timeout = &wait_timeout;
+    }
 
     running_process->blocked_state_signal = SCHEDULER_SUCCESS;
 
@@ -126,8 +136,22 @@ signal_t wait(Time_unit_t *timeout, Schedule_config_t *with_config) {
 
         // just peek, no pop - process still needs to inherit priority of signal during it's execution
         if ((signal = action_signal(action_queue_head(&running_process->pending_signal_queue)))) {
+
+            // check whether priority should be locked
+            if (action_signal_keep_priority_while_handled(signal)
+                    && process_schedule_config(running_process)->priority < sorted_set_item_priority(signal)) {
+
+                // disallow priority drop during signal handler if signal is released from pending queue
+                process_schedule_config(running_process)->priority = sorted_set_item_priority(signal);
+            }
+
             // execute action handler, process waiting state depends on handler return value
             process_waiting(running_process) = action(signal)->handler(action_owner(signal), action_signal_input(signal));
+
+#ifdef __SIGNAL_CLEAR_WDT_ON_HANDLED__
+            // clear WDT after signal handled
+            WDT_clr();
+#endif
 
             interrupt_suspend();
 
@@ -140,6 +164,11 @@ signal_t wait(Time_unit_t *timeout, Schedule_config_t *with_config) {
             }
 
             interrupt_restore();
+
+            // store / reset schedule config
+            schedule_config_copy(with_config, process_schedule_config(running_process));
+            // priority reset
+            schedulable_state_reset(running_process, NULL);
         }
 
         interrupt_suspend();
@@ -222,6 +251,15 @@ __naked __interrupt void _context_switch() {
 
     stack_save_context(&running_process->_stack_pointer);
 
+#ifdef __PROCESS_LOCAL_WDT_CONFIG__
+    // store current WDT state
+    WDT_backup_to(&running_process->_WDT_state);
+#endif
+
+    if (running_process->_post_suspend_hook) {
+        running_process->_post_suspend_hook(running_process);
+    }
+
     running_process = process(action_queue_head(&_runnable_queue));
 
     if (running_process->_pre_schedule_hook) {
@@ -230,6 +268,11 @@ __naked __interrupt void _context_switch() {
 
 #ifdef __CONTEXT_SWITCH_HANDLE_CLEAR_IFG__
     vector_clear_interrupt_flag(_context_switch_handle);
+#endif
+
+#ifdef __PROCESS_LOCAL_WDT_CONFIG__
+    // clear and restore process-local WDT state
+    WDT_clr_restore_from(&running_process->_WDT_state);
 #endif
 
     stack_restore_context(&running_process->_stack_pointer);
